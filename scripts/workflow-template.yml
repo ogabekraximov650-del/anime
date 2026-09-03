@@ -1,14 +1,18 @@
-name: Prepare & Upload Anime Episode
+name: Encode __FOLDER__
 
 on:
   push:
     branches: [main]
+    paths:
+      - "anime/__FOLDER__/**"
+      - "anipng/__FOLDER__.png"
+      - ".github/workflows/__FOLDER__.yml"
 
 permissions:
   contents: write
 
 concurrency:
-  group: prepare-and-upload
+  group: encode-__FOLDER__
   cancel-in-progress: false
 
 jobs:
@@ -41,39 +45,25 @@ jobs:
           fi
           echo "${{ secrets.PYRO_SESSION_B64 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
 
-      - name: Encode episodes
-        run: bash scripts/encode.sh
+      - name: Encode episode
+        run: bash scripts/encode.sh "__FOLDER__"
 
-      - name: Upload finished videos to Telegram
+      - name: Upload finished video to Telegram
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: |
-          shopt -s nullglob
-          videos=( Final_*_H264.mp4 )
-          if [ ${#videos[@]} -eq 0 ]; then
-            echo "Yuklanadigan video topilmadi (encode bosqichida hech narsa tayyorlanmadi)."
-            exit 0
-          fi
-          python3 scripts/telegram_upload.py "${videos[@]}"
+        run: python3 scripts/telegram_upload.py "Final___FOLDER___H264.mp4"
 
       - name: Remove Telegram session from disk
         if: always()
         run: rm -f scripts/pyro_session.session
 
-      - name: Cleanup processed source files
+      - name: Cleanup processed source files and this workflow
         if: success()
         run: |
-          if [ -f .build_processed_folders.txt ]; then
-            while IFS= read -r folder; do
-              [ -z "$folder" ] && continue
-              echo "Tozalanmoqda: $folder"
-              rm -rf -- "$folder" "${folder}.png"
-            done < .build_processed_folders.txt
-            rm -f .build_processed_folders.txt
-          fi
-          rm -f Final_*_H264.mp4
+          rm -rf "anime/__FOLDER__" "anipng/__FOLDER__.png" "Final___FOLDER___H264.mp4"
+          rm -f ".github/workflows/__FOLDER__.yml"
 
       - name: Commit cleanup
         if: success()
@@ -82,7 +72,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "chore: yuklangan epizodni tozalash [skip encode]"
+            git commit -m "chore: __FOLDER__ yuklandi va tozalandi [skip encode]"
             git push
           else
             echo "Tozalanadigan narsa yo'q."
