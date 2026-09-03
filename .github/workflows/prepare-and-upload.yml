@@ -1,0 +1,89 @@
+name: Prepare & Upload Anime Episode
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-and-upload
+  cancel-in-progress: false
+
+jobs:
+  encode-and-upload:
+    if: ${{ !contains(github.event.head_commit.message, '[skip encode]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install --no-cache-dir -r scripts/requirements.txt
+
+      - name: Restore Telegram session
+        run: |
+          if [ -z "${{ secrets.PYRO_SESSION_B64 }}" ]; then
+            echo "::error::PYRO_SESSION_B64 sekret o'rnatilmagan (repo Settings -> Secrets and variables -> Actions)"
+            exit 1
+          fi
+          echo "${{ secrets.PYRO_SESSION_B64 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
+
+      - name: Encode episodes
+        run: bash scripts/encode.sh
+
+      - name: Upload finished videos to Telegram
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          shopt -s nullglob
+          videos=( Final_*_H264.mp4 )
+          if [ ${#videos[@]} -eq 0 ]; then
+            echo "Yuklanadigan video topilmadi (encode bosqichida hech narsa tayyorlanmadi)."
+            exit 0
+          fi
+          python3 scripts/telegram_upload.py "${videos[@]}"
+
+      - name: Remove Telegram session from disk
+        if: always()
+        run: rm -f scripts/pyro_session.session
+
+      - name: Cleanup processed source files
+        if: success()
+        run: |
+          if [ -f .build_processed_folders.txt ]; then
+            while IFS= read -r folder; do
+              [ -z "$folder" ] && continue
+              echo "Tozalanmoqda: $folder"
+              rm -rf -- "$folder" "${folder}.png"
+            done < .build_processed_folders.txt
+            rm -f .build_processed_folders.txt
+          fi
+          rm -f Final_*_H264.mp4
+
+      - name: Commit cleanup
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: yuklangan epizodni tozalash [skip encode]"
+            git push
+          else
+            echo "Tozalanadigan narsa yo'q."
+          fi

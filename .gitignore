@@ -1,0 +1,16 @@
+# Telegram sessiya fayllari — hech qachon commit qilinmasin
+*.session
+*.session-journal
+*.session-shm
+*.session-wal
+
+# Workflow ishlash vaqtida yaratadigan vaqtinchalik fayllar
+.build_processed_folders.txt
+list.txt
+
+# Har ehtimolga qarshi: kodlangan natija ham commit qilinmasin
+# (workflow buni uploaddan keyin o'zi o'chiradi, lekin qo'lda push qilinsa ham
+# tasodifan repo ichida qolib ketmasin)
+Final_*_H264.mp4
+
+.DS_Store
