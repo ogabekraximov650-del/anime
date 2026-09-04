@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Ishlatilishi: encode.sh <papka_nomi>
-#   <papka_nomi> = [<TRIM_SEC>_]<KANAL_ID>_<epizod_nomi>
+#   <papka_nomi> = [<TRIM_SEC>_]<epizod_nomi>
 #     TRIM_SEC (ixtiyoriy) — video boshidan necha soniya kesib tashlanadi.
-#     Masalan: 1004437464013_9-qism        (kesish yo'q)
-#              30_1004437464013_9-qism     (boshidan 30 soniya kesiladi)
-#              0_1004437464013_9-qism      (0 soniya — kesish yo'q)
+#     Masalan: 9-qism            (kesish yo'q)
+#              30_9-qism         (boshidan 30 soniya kesiladi)
+#              0_9-qism          (0 soniya — kesish yo'q)
 #
-#   TRIM va KANAL_ID ikkalasi ham raqam bo'lgani uchun, ular uzunligiga
-#   qarab ajratiladi: TRIM qisqa (<=4 xona, ya'ni 0-9999 soniya), KANAL_ID
-#   uzun (>=6 xona, haqiqiy Telegram kanal ID'lari doim shunday).
+# Barcha videolar DOIM shu kanalga yuboriladi (kanal ID papka nomida
+# ko'rsatilmaydi — o'zgarmas):
+CHAT_ID="1003716499451"
 #
 # Manba ikki turdagi bo'lishi mumkin — IKKALASI HAM bir xil natija beradi
 # (3 soniyalik cover-intro + TRIM'dan keyingi asosiy video + intro tugagach
@@ -16,9 +16,7 @@
 #   anime/<papka>/seg_*.ts — video bo'laklari (concat qilinadi)
 #   anime/<papka>/*.mp4    — tayyor video (concat'siz, to'g'ridan-to'g'ri)
 #
-# Audio har doim standart AAC, 2 kanal (stereo), 44.1kHz'ga qayta kodlanadi
-# — manba fayldagi g'ayrioddiy audio formatlar (ba'zi HW dekoderlarda ovoz
-# chiqmasligiga sabab bo'ladigan) shu bilan tuzatiladi.
+# Audio har doim standart AAC, 2 kanal (stereo), 44.1kHz'ga qayta kodlanadi.
 
 set -uo pipefail
 shopt -s nullglob
@@ -32,21 +30,13 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-# --- Papka nomini ajratish: [<TRIM>_]<CHAT_ID>_<NAME> ---
-IFS='_' read -r p1 p2 rest <<< "$FOLDER"
+# --- Papka nomini ajratish: [<TRIM>_]<NAME> ---
+IFS='_' read -r p1 rest <<< "$FOLDER"
 TRIM_SEC=0
-if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [[ "$p2" =~ ^[0-9]+$ ]] && [ ${#p2} -ge 6 ]; then
+CLEAN_NAME="$FOLDER"
+if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [ -n "$rest" ]; then
     TRIM_SEC="$p1"
-    CHAT_ID="$p2"
     CLEAN_NAME="$rest"
-else
-    CHAT_ID="$p1"
-    CLEAN_NAME="${FOLDER#*_}"
-fi
-
-if [ -z "$CHAT_ID" ] || [ -z "$CLEAN_NAME" ]; then
-    echo "::error::Papka nomidan kanal ID/nom ajratib bo'lmadi: $FOLDER"
-    exit 1
 fi
 
 echo "$CHAT_ID" > "$REPO_ROOT/.encode_meta_chat"
@@ -55,7 +45,7 @@ echo "$CLEAN_NAME" > "$REPO_ROOT/.encode_meta_name"
 ANIME_DIR="$REPO_ROOT/anime/$FOLDER"
 OUTPUT="$REPO_ROOT/${CLEAN_NAME}.mp4"
 
-# --- Logotip: anipng/<USER_ID>_logo.png ---
+# --- Logotip: anipng/<USER_ID>_logo.png (havola shu ID'ga yuboriladi) ---
 logos=("$REPO_ROOT"/anipng/*_logo.png)
 if [ ${#logos[@]} -eq 0 ]; then
     logos=("$REPO_ROOT"/anipng/logo.png)
@@ -66,18 +56,10 @@ if [ ${#logos[@]} -eq 0 ] || [ ! -f "${logos[0]}" ]; then
 fi
 LOGO="${logos[0]}"
 
-# --- Cover: aniq nom bilan, bo'lmasa toza nom bo'yicha (HAR IKKI rejim uchun ham shart) ---
-COVER_IMG="$REPO_ROOT/anipng/${FOLDER}.png"
+# --- Cover: anipng/<NAME>.png (HAR IKKI rejim uchun ham shart) ---
+COVER_IMG="$REPO_ROOT/anipng/${CLEAN_NAME}.png"
 if [ ! -f "$COVER_IMG" ]; then
-    cands=("$REPO_ROOT"/anipng/*_"${CLEAN_NAME}".png)
-    [ ${#cands[@]} -gt 0 ] && COVER_IMG="${cands[0]}"
-fi
-if [ ! -f "$COVER_IMG" ]; then
-    cands=("$REPO_ROOT"/anipng/"${CLEAN_NAME}".png)
-    [ ${#cands[@]} -gt 0 ] && COVER_IMG="${cands[0]}"
-fi
-if [ ! -f "$COVER_IMG" ]; then
-    echo "::error::Cover rasm topilmadi ($CLEAN_NAME uchun anipng/ ichida)"
+    echo "::error::Cover rasm topilmadi (anipng/${CLEAN_NAME}.png)"
     exit 1
 fi
 
@@ -129,7 +111,6 @@ run_progress() {
 
 if [ ${#mp4s[@]} -gt 0 ]; then
     # ─────────── MP4 REJIMI: tayyor video, lekin ts rejimi bilan BIR XIL natija ───────────
-    # (3s cover intro + TRIM'dan keyingi video + intro tugagach chiqadigan logotip)
     SRC_MAIN="${mp4s[0]}"
     echo "    Manba : $SRC_MAIN (tayyor video)"
 
