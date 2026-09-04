@@ -146,10 +146,14 @@ async def main(video: str, chat_id, user_id, name: str):
         print(f"   Kanal: {chat_id} | Havola uchun user: {user_id or 'yo‘q'}", flush=True)
         print(f"   Sarlavha: {caption}", flush=True)
 
-        # Maxfiy kanal/guruhlarni peer keshiga olish
-        print("🔎 Suhbatlar ro'yxati o'qilmoqda...", flush=True)
-        async for _ in app.get_dialogs():
-            pass
+        # Maxfiy/kam faol kanal-guruhlarni peer keshiga olish. Telegram kam
+        # faol suhbatlarni avtomatik ARXIVLAYDI (folder_id=1) — standart
+        # get_dialogs() (folder_id=0) ularni ko'rmaydi, shuning uchun
+        # ikkalasini ham aylanib chiqamiz.
+        print("🔎 Suhbatlar ro'yxati o'qilmoqda (asosiy + arxiv)...", flush=True)
+        for folder_id in (0, 1):
+            async for _ in app.get_dialogs(folder_id=folder_id):
+                pass
         print("   Tayyor.", flush=True)
 
         meta = get_video_metadata(video)
