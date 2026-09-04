@@ -1,44 +1,57 @@
 #!/usr/bin/env python3
 """
-Telegram video/fayl yuklash skripti (Pyrogram + TgCrypto).
+Telegram video yuklash skripti (Pyrogram + TgCrypto).
 
 Ishlatish:
-    python3 telegram_upload.py video.mp4
-    python3 telegram_upload.py *.mp4
-    python3 telegram_upload.py arxiv.zip        # fayl sifatida
-    python3 telegram_upload.py video.mp4 --doc  # majburan fayl
+    python3 -u telegram_upload.py aybsiz_8.mp4 --chat 1003716499451 --user 12345678 --name aybsiz_8
+
+  --chat  : video yuboriladigan kanal/guruh ID (papka nomidan olinadi)
+  --user  : yuborilgan videoning HAVOLASI jo'natiladigan foydalanuvchi ID
+            (anipng/<USER_ID>_logo.png nomidan olinadi)
+  --name  : video sarlavhasi (faqat toza nom, masalan "aybsiz_8")
 """
 
-import os, sys, time, asyncio, subprocess, tempfile, json
+import os, sys, time, asyncio, subprocess, tempfile
 from pathlib import Path
 from pyrogram import Client
 
 API_ID   = int(os.environ.get("TG_API_ID", 0))
 API_HASH = os.environ.get("TG_API_HASH", "")
-CHAT_ID  = os.environ.get("TG_CHAT_ID", "me")
 
-SESSION  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pyro_session")
-
-try:
-    CHAT_ID = int(CHAT_ID)
-except (ValueError, TypeError):
-    pass
+SESSION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pyro_session")
 
 if not API_ID or not API_HASH:
     print("❌ TG_API_ID va TG_API_HASH kerak.")
     sys.exit(1)
 
-VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".flv"}
+
+def norm_id(raw):
+    """Telegram ID'ni to'g'ri shaklga keltiradi.
+
+    Kanal/supergroup ID'lari '-100...' shaklida bo'ladi. Papka nomiga minus
+    belgisini yozish noqulay bo'lgani uchun, '100' bilan boshlanadigan uzun
+    raqamga minus avtomatik qo'shiladi.
+    """
+    if raw is None:
+        return None
+    raw = str(raw).strip()
+    if not raw:
+        return None
+    if raw.startswith("@"):
+        return raw
+    if raw.startswith("-"):
+        return int(raw)
+    if raw.startswith("100") and len(raw) >= 13:
+        return int("-" + raw)
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
 
 
 def ffprobe_get(file_path: str, stream_type: str, entry: str) -> str:
-    cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", stream_type,
-        "-show_entries", f"stream={entry}",
-        "-of", "csv=p=0",
-        file_path
-    ]
+    cmd = ["ffprobe", "-v", "error", "-select_streams", stream_type,
+           "-show_entries", f"stream={entry}", "-of", "csv=p=0", file_path]
     try:
         out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
         return out.split("\n")[0].strip()
@@ -47,19 +60,14 @@ def ffprobe_get(file_path: str, stream_type: str, entry: str) -> str:
 
 
 def get_video_metadata(file_path: str) -> dict:
-    """Video eni, bo'yi va uzunligini (sekundda) olish. Noma'lum qiymatlar None."""
     width_s  = ffprobe_get(file_path, "v:0", "width")
     height_s = ffprobe_get(file_path, "v:0", "height")
-
     duration_s = ""
     try:
-        cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
-            file_path
-        ]
-        duration_s = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
+        duration_s = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", file_path],
+            stderr=subprocess.DEVNULL).decode().strip()
     except Exception:
         pass
 
@@ -70,203 +78,152 @@ def get_video_metadata(file_path: str) -> dict:
         except (ValueError, TypeError):
             return None
 
-    return {
-        "width":    to_int(width_s),
-        "height":   to_int(height_s),
-        "duration": to_int(duration_s),
-    }
+    return {"width": to_int(width_s), "height": to_int(height_s),
+            "duration": to_int(duration_s)}
 
 
-def get_thumbnail(video_path: str) -> tuple[str | None, bool]:
-    """
-    Thumbnail topish.
-    Returns: (path_or_None, is_owned_temp)
-      is_owned_temp=True => biz yaratdik, yuklagandan keyin o'chiramiz.
-    """
-    base = Path(video_path).with_suffix("")
+def get_thumbnail(video_path: str, name: str):
+    """(yo'l, biz_yaratdikmi) — cover rasmni topadi yoki videodan kadr oladi."""
+    anipng = Path(video_path).resolve().parent / "anipng"
+    if anipng.is_dir():
+        for img in sorted(anipng.glob(f"*_{name}.png")):
+            if not img.name.endswith("_logo.png"):
+                return str(img), False
+        exact = anipng / f"{name}.png"
+        if exact.exists():
+            return str(exact), False
 
-    # 1. Bir xil nomli cover rasm
-    for ext in (".jpg", ".jpeg", ".png"):
-        img = base.with_suffix(ext)
-        if img.exists():
-            return str(img), False
-
-    # 2. encode.sh uslubi: Final_NOMI.mp4 => NOMI.png
-    stem = Path(video_path).stem
-    if stem.startswith("Final_"):
-        folder_name = stem[len("Final_"):]
-        workspace   = Path(video_path).parent
-        cover = workspace / f"{folder_name}.png"
-        if cover.exists():
-            return str(cover), False
-
-    # 3. ffmpeg orqali 1-soniyadan kadr olish (vaqtinchalik fayl)
     try:
         tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
         tmp.close()
-        cmd = [
-            "ffmpeg", "-y", "-ss", "1",
-            "-i", video_path,
-            "-vframes", "1",
-            "-q:v", "2",
-            tmp.name
-        ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        subprocess.run(["ffmpeg", "-y", "-ss", "1", "-i", video_path,
+                        "-vframes", "1", "-q:v", "2", tmp.name],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
         if os.path.exists(tmp.name) and os.path.getsize(tmp.name) > 0:
-            return tmp.name, True   # biz yaratdik
+            return tmp.name, True
         os.unlink(tmp.name)
     except Exception:
         pass
-
     return None, False
 
 
-def make_progress(file_size: int):
+def make_progress(label: str):
+    """Har 0.5 soniyada yangi qatorda progress chiqaradi (CI logi uchun mos)."""
     start = time.time()
-    last_update = [0.0]
+    last = [0.0]
 
     def callback(current, total):
         now = time.time()
-        if now - last_update[0] < 0.5 and current < total:
+        if now - last[0] < 0.5 and current < total:
             return
-        last_update[0] = now
+        last[0] = now
         elapsed = now - start
         speed = current / elapsed if elapsed > 0 else 0
-        pct = current / total * 100
-        filled = int(pct // 4)
-        bar = "█" * filled + "░" * (25 - filled)
-        speed_str = (f"{speed/1024/1024:.2f} MB/s" if speed > 1024*1024
+        pct = current / total * 100 if total else 0
+        speed_str = (f"{speed/1024/1024:.2f} MB/s" if speed > 1024 * 1024
                      else f"{speed/1024:.1f} KB/s")
         eta = int((total - current) / speed) if speed > 0 else 0
-        print(
-            f"\r[{bar}] {pct:.1f}%  "
-            f"{current/1024/1024:.1f}/{total/1024/1024:.1f} MB  "
-            f"⚡{speed_str}  ETA:{eta//60}:{eta%60:02d}   ",
-            end="", flush=True,
-        )
+        print(f"📤 [{label}] {pct:.1f}% | "
+              f"{current/1024/1024:.1f}/{total/1024/1024:.1f} MB | "
+              f"{speed_str} | ETA {eta//60}:{eta%60:02d}", flush=True)
 
     return callback
 
 
-async def upload_file(app: Client, chat_id, file_path: str, force_doc: bool = False):
-    if not os.path.exists(file_path):
-        print(f"❌ Topilmadi: {file_path}")
-        return False
+async def main(video: str, chat_id, user_id, name: str):
+    if not os.path.exists(video):
+        print(f"❌ Topilmadi: {video}")
+        sys.exit(1)
 
-    file_name = os.path.basename(file_path)
-    file_size = os.path.getsize(file_path)
-    ext = os.path.splitext(file_name)[1].lower()
-    is_video = (ext in VIDEO_EXTS) and not force_doc
+    file_size = os.path.getsize(video)
 
-    print(f"\n📤 {file_name}  ({file_size/1024/1024:.2f} MB)  "
-          f"{'🎬 streaming video' if is_video else '📁 fayl (dokument)'}")
-
-    start    = time.time()
-    progress = make_progress(file_size)
-    thumb_path, thumb_owned = None, False
-
-    # --- .meta.json dan ma'lumot olish (mavjud bo'lsa) ---
-    tg_meta = {}
-    meta_file = os.path.splitext(file_path)[0] + ".meta.json"
-    if os.path.exists(meta_file):
-        try:
-            with open(meta_file, encoding="utf-8") as f:
-                tg_meta = json.load(f)
-            print(f"   📋 meta.json topildi")
-        except Exception:
-            tg_meta = {}
-
-    try:
-        if is_video:
-            # --- Metadata: avval meta.json, keyin ffprobe ---
-            if tg_meta:
-                meta = {
-                    "duration": tg_meta.get("duration") or None,
-                    "width":    tg_meta.get("width")    or None,
-                    "height":   tg_meta.get("height")   or None,
-                }
-                saved_thumb = tg_meta.get("thumb", "")
-                if saved_thumb and os.path.exists(saved_thumb):
-                    thumb_path, thumb_owned = saved_thumb, False
-                else:
-                    thumb_path, thumb_owned = get_thumbnail(file_path)
-            else:
-                meta = get_video_metadata(file_path)
-                thumb_path, thumb_owned = get_thumbnail(file_path)
-
-            caption_text = tg_meta.get("caption", "").strip() or f"🎬 {file_name}"
-
-            dur = meta["duration"]
-            dur_fmt = f"{dur//60}:{dur%60:02d}" if dur else "noma'lum"
-            print(f"   🖼  Thumbnail : {thumb_path or 'topilmadi'}")
-            print(f"   ⏱  Uzunlik   : {dur_fmt}")
-            print(f"   📐 O'lcham   : {meta['width'] or '?'}x{meta['height'] or '?'}")
-
-            extra = {}
-            if meta["duration"]: extra["duration"] = meta["duration"]
-            if meta["width"]:    extra["width"]    = meta["width"]
-            if meta["height"]:   extra["height"]   = meta["height"]
-            if thumb_path:       extra["thumb"]    = thumb_path
-
-            await app.send_video(
-                chat_id,
-                video              = file_path,
-                caption            = caption_text,
-                supports_streaming = True,
-                progress           = progress,
-                **extra,
-            )
-        else:
-            caption_text = tg_meta.get("caption", "").strip() or f"📁 {file_name}"
-            await app.send_document(
-                chat_id,
-                document = file_path,
-                caption  = caption_text,
-                progress = progress,
-            )
-    finally:
-        if thumb_owned and thumb_path and os.path.exists(thumb_path):
-            os.unlink(thumb_path)
-
-    elapsed = time.time() - start
-    avg_kb  = file_size / elapsed / 1024
-    print(f"\n✅ Yuklandi: {file_name}  "
-          f"({elapsed:.0f} sek, o'rtacha: {avg_kb:.0f} KB/s)")
-    return True
-
-
-async def main(files: list, force_doc: bool):
     async with Client(SESSION, api_id=API_ID, api_hash=API_HASH) as app:
         me = await app.get_me()
-        print(f"✅ Ulandi: {me.first_name} (@{me.username})")
-        print(f"   Manzil: {CHAT_ID}")
+        print(f"✅ Ulandi: {me.first_name} (@{me.username})", flush=True)
+        print(f"   Kanal: {chat_id} | Havola uchun user: {user_id or 'yo‘q'}", flush=True)
 
-        # Maxfiy (private) kanal/guruhlar uchun: Pyrogram raqamli ID orqali
-        # yuborishdan oldin o'sha peer keshda bo'lishi kerak. Suhbatlar
-        # ro'yxatini bir marta o'qib chiqish shuni ta'minlaydi.
-        print("🔎 Suhbatlar ro'yxati o'qilmoqda (maxfiy kanallarni aniqlash uchun)...")
+        # Maxfiy kanal/guruhlarni peer keshiga olish
+        print("🔎 Suhbatlar ro'yxati o'qilmoqda...", flush=True)
         async for _ in app.get_dialogs():
             pass
-        print("   Tayyor.\n")
+        print("   Tayyor.", flush=True)
 
-        ok = 0
-        for f in files:
-            if await upload_file(app, CHAT_ID, f, force_doc):
-                ok += 1
+        meta = get_video_metadata(video)
+        thumb, thumb_owned = get_thumbnail(video, name)
 
-        print(f"\n{'─'*45}")
-        print(f"Jami: {ok}/{len(files)} fayl yuklandi.")
+        dur = meta["duration"]
+        dur_txt = (f"{dur//60}:{dur%60:02d}") if dur else "noma'lum"
+        print(f"\n📦 {name}.mp4 | {file_size/1024/1024:.2f} MB | "
+              f"{meta['width'] or '?'}x{meta['height'] or '?'} | {dur_txt}", flush=True)
+        print(f"🖼  Thumbnail: {os.path.basename(thumb) if thumb else 'yo‘q'}\n", flush=True)
 
-        if ok != len(files):
-            sys.exit(1)
+        extra = {}
+        if meta["duration"]: extra["duration"] = meta["duration"]
+        if meta["width"]:    extra["width"]    = meta["width"]
+        if meta["height"]:   extra["height"]   = meta["height"]
+        if thumb:            extra["thumb"]    = thumb
+
+        try:
+            msg = await app.send_video(
+                chat_id,
+                video=video,
+                caption=name,                 # FAQAT toza nom
+                file_name=f"{name}.mp4",
+                supports_streaming=True,
+                progress=make_progress(name),
+                **extra,
+            )
+        finally:
+            if thumb_owned and thumb and os.path.exists(thumb):
+                os.unlink(thumb)
+
+        print(f"\n✅ Kanalga yuborildi (message id: {msg.id})", flush=True)
+
+        # --- Havolani olish ---
+        link = None
+        try:
+            link = msg.link
+        except Exception:
+            link = None
+        if not link:
+            cid = str(msg.chat.id)
+            if cid.startswith("-100"):
+                link = f"https://t.me/c/{cid[4:]}/{msg.id}"
+        print(f"🔗 Havola: {link or 'olinmadi'}", flush=True)
+
+        # --- Havolani foydalanuvchiga yuborish ---
+        if user_id and link:
+            try:
+                await app.send_message(user_id, f"{name}\n{link}")
+                print(f"✉️  Havola {user_id} ga yuborildi.", flush=True)
+            except Exception as e:
+                print(f"⚠️  Havolani {user_id} ga yuborib bo'lmadi: {e}", flush=True)
+        elif not user_id:
+            print("ℹ️  User ID berilmagan — havola yuborilmadi.", flush=True)
 
 
 if __name__ == "__main__":
-    args      = [a for a in sys.argv[1:] if not a.startswith("--")]
-    force_doc = "--doc" in sys.argv
-
+    args = sys.argv[1:]
     if not args:
         print(__doc__)
         sys.exit(1)
 
-    asyncio.run(main(args, force_doc))
+    video = args[0]
+    chat_raw = user_raw = None
+    name = Path(video).stem
+
+    i = 1
+    while i < len(args):
+        if args[i] == "--chat" and i + 1 < len(args):
+            chat_raw = args[i + 1]; i += 2
+        elif args[i] == "--user" and i + 1 < len(args):
+            user_raw = args[i + 1]; i += 2
+        elif args[i] == "--name" and i + 1 < len(args):
+            name = args[i + 1]; i += 2
+        else:
+            i += 1
+
+    if chat_raw is None:
+        chat_raw = os.environ.get("TG_CHAT_ID", "me")
+
+    asyncio.run(main(video, norm_id(chat_raw), norm_id(user_raw), name))
