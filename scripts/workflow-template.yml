@@ -7,6 +7,7 @@ on:
       - "anime/__FOLDER__/**"
       - "anipng/__FOLDER__.png"
       - ".github/workflows/__FOLDER__.yml"
+  workflow_dispatch: {}
 
 permissions:
   contents: write
