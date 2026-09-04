@@ -34,7 +34,7 @@ jobs:
       - name: Restore Telegram session
         run: |
           if [ -z "${{ secrets.PYRO_SESSION_B64_1 }}" ]; then
-            echo "::error::PYRO_SESSION_B64_1/2/3 sekretlari o'rnatilmagan"
+            echo "::error::PYRO_SESSION_B64_1/2/3 sekretlari topilmadi"
             exit 1
           fi
           printf '%s%s%s' "${{ secrets.PYRO_SESSION_B64_1 }}" "${{ secrets.PYRO_SESSION_B64_2 }}" "${{ secrets.PYRO_SESSION_B64_3 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
@@ -57,7 +57,7 @@ jobs:
           else
             USER_ID=""
           fi
-          echo "Kanal: $CHAT_ID | User: ${USER_ID:-yo'q} | Nom: $NAME"
+          echo "Kanal: $CHAT_ID | User: $USER_ID | Nom: $NAME"
           python3 -u scripts/telegram_upload.py "${NAME}.mp4" \
             --chat "$CHAT_ID" --user "$USER_ID" --name "$NAME"
 
@@ -86,5 +86,5 @@ jobs:
             git commit -m "chore: 1004437464013_8-qism yuklandi va tozalandi [skip encode]"
             git push
           else
-            echo "Tozalanadigan narsa yo'q."
+            echo "Tozalanadigan narsa topilmadi."
           fi
