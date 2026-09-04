@@ -48,9 +48,8 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           PYTHONUNBUFFERED: "1"
         run: |
-          FOLDER="__FOLDER__"
-          CHAT_ID="${FOLDER%%_*}"
-          NAME="${FOLDER#*_}"
+          CHAT_ID=$(cat .encode_meta_chat)
+          NAME=$(cat .encode_meta_name)
           LOGO=$(ls anipng/*_logo.png 2>/dev/null | head -n 1)
           if [ -n "$LOGO" ]; then
             USER_ID=$(basename "$LOGO" | sed 's/_logo\.png$//')
@@ -69,11 +68,12 @@ jobs:
         if: success()
         run: |
           FOLDER="__FOLDER__"
-          NAME="${FOLDER#*_}"
+          NAME=$(cat .encode_meta_name 2>/dev/null || echo "")
           rm -rf "anime/$FOLDER"
           rm -f "anipng/${FOLDER}.png"
-          rm -f anipng/*_"${NAME}".png
-          rm -f "${NAME}.mp4"
+          [ -n "$NAME" ] && rm -f anipng/*_"${NAME}".png
+          [ -n "$NAME" ] && rm -f "${NAME}.mp4"
+          rm -f .encode_meta_chat .encode_meta_name
           rm -f ".github/workflows/__WFFILE__.yml"
 
       - name: Commit cleanup
