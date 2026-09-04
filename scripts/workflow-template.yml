@@ -73,7 +73,6 @@ jobs:
           FOLDER="__FOLDER__"
           NAME=$(cat .encode_meta_name 2>/dev/null || echo "")
           rm -rf "anime/$FOLDER"
-          [ -n "$NAME" ] && rm -f "anipng/${NAME}.png"
           [ -n "$NAME" ] && rm -f "${NAME}.mp4"
           rm -f .encode_meta_name
           rm -f ".github/workflows/__WFFILE__.yml"

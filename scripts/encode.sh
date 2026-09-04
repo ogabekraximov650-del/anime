@@ -14,6 +14,8 @@
 # chiqadigan logotip):
 #   anime/<papka>/seg_*.ts — video bo'laklari (concat qilinadi)
 #   anime/<papka>/*.mp4    — tayyor video (concat'siz, to'g'ridan-to'g'ri)
+#   anime/<papka>/*.png    — 3 soniyalik cover-intro rasm (shu papka ichida,
+#                            ts/mp4 fayllar bilan birga yuklanadi)
 #
 # Audio har doim standart AAC, 2 kanal (stereo), 44.1kHz'ga qayta kodlanadi.
 
@@ -54,17 +56,18 @@ if [ ${#logos[@]} -eq 0 ] || [ ! -f "${logos[0]}" ]; then
 fi
 LOGO="${logos[0]}"
 
-# --- Cover: anipng/<NAME>.png (HAR IKKI rejim uchun ham shart) ---
-COVER_IMG="$REPO_ROOT/anipng/${CLEAN_NAME}.png"
-if [ ! -f "$COVER_IMG" ]; then
-    echo "::error::Cover rasm topilmadi (anipng/${CLEAN_NAME}.png)"
-    exit 1
-fi
-
 if [ ! -d "$ANIME_DIR" ]; then
     echo "::error::anime/$FOLDER papkasi topilmadi"
     exit 1
 fi
+
+# --- Cover: anime/<papka>/*.png (ts/mp4 fayllar bilan birga yuklanadi) ---
+covers=("$ANIME_DIR"/*.png)
+if [ ${#covers[@]} -eq 0 ] || [ ! -f "${covers[0]}" ]; then
+    echo "::error::Cover rasm topilmadi (anime/$FOLDER ichida .png fayl bo'lishi kerak)"
+    exit 1
+fi
+COVER_IMG="${covers[0]}"
 
 echo "=== $CLEAN_NAME ishlanmoqda (kesish: ${TRIM_SEC}s) ==="
 echo "    Cover : $(basename "$COVER_IMG")"

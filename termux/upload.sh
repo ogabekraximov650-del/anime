@@ -31,8 +31,8 @@ TOKEN_FILE="$HOME/.anime_token"
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(cat "$TOKEN_FILE" 2>/dev/null || true)}"
 
 REPO_DIR="$HOME/anime-repo"                 # git klon shu yerda (Termux ichida)
-ANIME_SRC="/storage/emulated/0/anime"       # ts fayllar shu yerda
-ANIPNG_SRC="/storage/emulated/0/anipng"     # cover + logo shu yerda
+ANIME_SRC="/storage/emulated/0/anime"       # ts fayllar + cover .png shu yerda (har epizod papkasi ichida)
+ANIPNG_SRC="/storage/emulated/0/anipng"     # faqat logo.png shu yerda
 STATE_FILE="$HOME/.anime_uploaded.log"      # allaqachon yuklangan epizodlar ro'yxati
 # ────────────────────────────────────────────────────────────
 
@@ -115,27 +115,26 @@ cd "$REPO_DIR"
 DONE=()
 for FOLDER in "${TO_PROCESS[@]}"; do
     SRC_FOLDER="$ANIME_SRC/$FOLDER"
-    SRC_COVER="$ANIPNG_SRC/${FOLDER}.png"
 
     if [ ! -d "$SRC_FOLDER" ] || ! ls "$SRC_FOLDER"/seg_*.ts >/dev/null 2>&1; then
         echo "⚠️  $FOLDER: seg_*.ts topilmadi, o'tkazib yuborildi"
         continue
     fi
-    if [ ! -f "$SRC_COVER" ]; then
-        echo "⚠️  $FOLDER: cover ($SRC_COVER) topilmadi, o'tkazib yuborildi"
+    if ! ls "$SRC_FOLDER"/*.png >/dev/null 2>&1; then
+        echo "⚠️  $FOLDER: cover .png topilmadi (ts fayllar bilan bir papkada bo'lishi kerak), o'tkazib yuborildi"
         continue
     fi
 
     echo "📁 $FOLDER ko'chirilmoqda..."
     mkdir -p "anime/$FOLDER" "anipng" ".github/workflows"
     cp -f "$SRC_FOLDER"/seg_*.ts "anime/$FOLDER/"
-    cp -f "$SRC_COVER" "anipng/${FOLDER}.png"
+    cp -f "$SRC_FOLDER"/*.png "anime/$FOLDER/"
     cp -f "$ANIPNG_SRC/logo.png" "anipng/logo.png"
 
     echo "🛠  Workflow yaratilmoqda: .github/workflows/${FOLDER}.yml"
     sed "s/__FOLDER__/$FOLDER/g" "$TEMPLATE" > ".github/workflows/${FOLDER}.yml"
 
-    git add "anime/$FOLDER" "anipng/${FOLDER}.png" ".github/workflows/${FOLDER}.yml"
+    git add "anime/$FOLDER" ".github/workflows/${FOLDER}.yml"
     DONE+=("$FOLDER")
 done
 
