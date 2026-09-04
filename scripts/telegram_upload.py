@@ -3,12 +3,13 @@
 Telegram video yuklash skripti (Pyrogram + TgCrypto).
 
 Ishlatish:
-    python3 -u telegram_upload.py aybsiz_8.mp4 --chat 1003716499451 --user 12345678 --name aybsiz_8
+    python3 -u telegram_upload.py 2-fasl_7-qism.mp4 --chat 1003716499451 --user 12345678 --name 2-fasl_7-qism
 
   --chat  : video yuboriladigan kanal/guruh ID (papka nomidan olinadi)
   --user  : yuborilgan videoning HAVOLASI jo'natiladigan foydalanuvchi ID
             (anipng/<USER_ID>_logo.png nomidan olinadi)
-  --name  : video sarlavhasi (faqat toza nom, masalan "aybsiz_8")
+  --name  : epizod nomi. Undagi pastki chiziqlar sarlavhada bo'sh joyga
+            aylanadi: "2-fasl_7-qism" -> "2-fasl 7-qism"
 """
 
 import os, sys, time, asyncio, subprocess, tempfile
@@ -135,12 +136,15 @@ async def main(video: str, chat_id, user_id, name: str):
         print(f"❌ Topilmadi: {video}")
         sys.exit(1)
 
+    # Pastki chiziqlar sarlavhada bo'sh joyga aylanadi
+    caption = name.replace("_", " ").strip()
     file_size = os.path.getsize(video)
 
     async with Client(SESSION, api_id=API_ID, api_hash=API_HASH) as app:
         me = await app.get_me()
         print(f"✅ Ulandi: {me.first_name} (@{me.username})", flush=True)
         print(f"   Kanal: {chat_id} | Havola uchun user: {user_id or 'yo‘q'}", flush=True)
+        print(f"   Sarlavha: {caption}", flush=True)
 
         # Maxfiy kanal/guruhlarni peer keshiga olish
         print("🔎 Suhbatlar ro'yxati o'qilmoqda...", flush=True)
@@ -153,7 +157,7 @@ async def main(video: str, chat_id, user_id, name: str):
 
         dur = meta["duration"]
         dur_txt = (f"{dur//60}:{dur%60:02d}") if dur else "noma'lum"
-        print(f"\n📦 {name}.mp4 | {file_size/1024/1024:.2f} MB | "
+        print(f"\n📦 {caption}.mp4 | {file_size/1024/1024:.2f} MB | "
               f"{meta['width'] or '?'}x{meta['height'] or '?'} | {dur_txt}", flush=True)
         print(f"🖼  Thumbnail: {os.path.basename(thumb) if thumb else 'yo‘q'}\n", flush=True)
 
@@ -167,10 +171,10 @@ async def main(video: str, chat_id, user_id, name: str):
             msg = await app.send_video(
                 chat_id,
                 video=video,
-                caption=name,                 # FAQAT toza nom
-                file_name=f"{name}.mp4",
+                caption=caption,              # FAQAT toza nom, boshqa hech narsa
+                file_name=f"{caption}.mp4",
                 supports_streaming=True,
-                progress=make_progress(name),
+                progress=make_progress(caption),
                 **extra,
             )
         finally:
@@ -194,7 +198,7 @@ async def main(video: str, chat_id, user_id, name: str):
         # --- Havolani foydalanuvchiga yuborish ---
         if user_id and link:
             try:
-                await app.send_message(user_id, f"{name}\n{link}")
+                await app.send_message(user_id, f"{caption}\n{link}")
                 print(f"✉️  Havola {user_id} ga yuborildi.", flush=True)
             except Exception as e:
                 print(f"⚠️  Havolani {user_id} ga yuborib bo'lmadi: {e}", flush=True)
