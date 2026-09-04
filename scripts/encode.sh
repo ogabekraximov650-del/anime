@@ -10,9 +10,11 @@
 #   qarab ajratiladi: TRIM qisqa (<=4 xona, ya'ni 0-9999 soniya), KANAL_ID
 #   uzun (>=6 xona, haqiqiy Telegram kanal ID'lari doim shunday).
 #
-# Manba ikki turdagi bo'lishi mumkin:
-#   anime/<papka>/seg_*.ts — video bo'laklari (concat + cover intro + logo)
-#   anime/<papka>/*.mp4    — tayyor video (faqat TRIM + logotip qo'llanadi)
+# Manba ikki turdagi bo'lishi mumkin — IKKALASI HAM bir xil natija beradi
+# (3 soniyalik cover-intro + TRIM'dan keyingi asosiy video + intro tugagach
+# chiqadigan logotip):
+#   anime/<papka>/seg_*.ts — video bo'laklari (concat qilinadi)
+#   anime/<papka>/*.mp4    — tayyor video (concat'siz, to'g'ridan-to'g'ri)
 
 set -uo pipefail
 shopt -s nullglob
@@ -60,12 +62,28 @@ if [ ${#logos[@]} -eq 0 ] || [ ! -f "${logos[0]}" ]; then
 fi
 LOGO="${logos[0]}"
 
+# --- Cover: aniq nom bilan, bo'lmasa toza nom bo'yicha (HAR IKKI rejim uchun ham shart) ---
+COVER_IMG="$REPO_ROOT/anipng/${FOLDER}.png"
+if [ ! -f "$COVER_IMG" ]; then
+    cands=("$REPO_ROOT"/anipng/*_"${CLEAN_NAME}".png)
+    [ ${#cands[@]} -gt 0 ] && COVER_IMG="${cands[0]}"
+fi
+if [ ! -f "$COVER_IMG" ]; then
+    cands=("$REPO_ROOT"/anipng/"${CLEAN_NAME}".png)
+    [ ${#cands[@]} -gt 0 ] && COVER_IMG="${cands[0]}"
+fi
+if [ ! -f "$COVER_IMG" ]; then
+    echo "::error::Cover rasm topilmadi ($CLEAN_NAME uchun anipng/ ichida)"
+    exit 1
+fi
+
 if [ ! -d "$ANIME_DIR" ]; then
     echo "::error::anime/$FOLDER papkasi topilmadi"
     exit 1
 fi
 
 echo "=== $CLEAN_NAME ishlanmoqda (kanal: $CHAT_ID, kesish: ${TRIM_SEC}s) ==="
+echo "    Cover : $(basename "$COVER_IMG")"
 echo "    Logo  : $(basename "$LOGO")"
 echo "    Natija: ${CLEAN_NAME}.mp4"
 
@@ -106,46 +124,50 @@ run_progress() {
 }
 
 if [ ${#mp4s[@]} -gt 0 ]; then
-    # ─────────── MP4 REJIMI: tayyor video + (kesish) + logotip ───────────
-    SRC_MP4="${mp4s[0]}"
-    echo "    Manba : $SRC_MP4 (tayyor video)"
+    # ─────────── MP4 REJIMI: tayyor video, lekin ts rejimi bilan BIR XIL natija ───────────
+    # (3s cover intro + TRIM'dan keyingi video + intro tugagach chiqadigan logotip)
+    SRC_MAIN="${mp4s[0]}"
+    echo "    Manba : $SRC_MAIN (tayyor video)"
 
-    total_sec=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$SRC_MP4" 2>/dev/null | cut -d. -f1)
+    w=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$SRC_MAIN" | head -n 1 | tr -d '\r')
+    h=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$SRC_MAIN" | head -n 1 | tr -d '\r')
+    if [ -z "$w" ] || [ -z "$h" ]; then
+        echo "::error::$CLEAN_NAME: video o'lchamini aniqlab bo'lmadi"
+        exit 1
+    fi
+
+    fps_val=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$SRC_MAIN" | head -n 1 | tr -d '\r')
+    if [ -z "$fps_val" ] || [ "$fps_val" = "0/0" ]; then
+        fps_val=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$SRC_MAIN" | head -n 1 | tr -d '\r')
+    fi
+    [ -z "$fps_val" ] || [ "$fps_val" = "0/0" ] && fps_val="25/1"
+
+    total_sec=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$SRC_MAIN" 2>/dev/null | cut -d. -f1)
     [ -z "$total_sec" ] && total_sec=0
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
-    stdbuf -oL ffmpeg -ss "$TRIM_SEC" -i "$SRC_MP4" -i "$LOGO" \
-        -filter_complex "[1:v]scale=200:-1[l];[0:v][l]overlay=main_w-overlay_w-20:20,format=yuv420p[out_v]" \
-        -map "[out_v]" -map 0:a? \
+    stdbuf -oL ffmpeg -ss "$TRIM_SEC" -i "$SRC_MAIN" \
+        -loop 1 -t 3 -i "$COVER_IMG" \
+        -i "$LOGO" \
+        -f lavfi -t 3 -i anullsrc=r=44100:cl=stereo \
+        -filter_complex "[1:v]scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h,setsar=1,fps=$fps_val[c_v];[0:v]scale=$w:$h,setsar=1,fps=$fps_val[main_v];[2:v]scale=200:-1[l];[c_v][3:a][main_v][0:a]concat=n=2:v=1:a=1[full_v][full_a];[full_v][l]overlay=main_w-overlay_w-20:20:enable='gte(t,3)',format=yuv420p[out_v]" \
+        -map "[out_v]" -map "[full_a]" \
         -c:v libx264 -preset medium -crf 18 \
-        -c:a aac -b:a 128k -ar 44100 \
+        -g 48 -keyint_min 48 -sc_threshold 0 \
+        -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
+        -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$remain_sec"
     status=$?
 
 elif [ ${#segs[@]} -gt 0 ]; then
-    # ─────────── TS REJIMI: bo'laklar + cover intro + (kesish) + logotip ───────────
-    COVER_IMG="$REPO_ROOT/anipng/${FOLDER}.png"
-    if [ ! -f "$COVER_IMG" ]; then
-        cands=("$REPO_ROOT"/anipng/*_"${CLEAN_NAME}".png)
-        [ ${#cands[@]} -gt 0 ] && COVER_IMG="${cands[0]}"
-    fi
-    if [ ! -f "$COVER_IMG" ]; then
-        cands=("$REPO_ROOT"/anipng/"${CLEAN_NAME}".png)
-        [ ${#cands[@]} -gt 0 ] && COVER_IMG="${cands[0]}"
-    fi
-    if [ ! -f "$COVER_IMG" ]; then
-        echo "::error::Cover rasm topilmadi ($CLEAN_NAME uchun anipng/ ichida)"
-        exit 1
-    fi
+    # ─────────── TS REJIMI: bo'laklar concat qilinadi, keyin xuddi shu quvur ───────────
     echo "    Manba : ${#segs[@]} ta seg_*.ts"
-    echo "    Cover : $(basename "$COVER_IMG")"
 
     first_file=$(printf '%s\n' "${segs[@]}" | sort | head -n 1)
     w=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$first_file" | head -n 1 | tr -d '\r')
     h=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$first_file" | head -n 1 | tr -d '\r')
-
     if [ -z "$w" ] || [ -z "$h" ]; then
         echo "::error::$CLEAN_NAME: video o'lchamini aniqlab bo'lmadi"
         exit 1
@@ -155,9 +177,7 @@ elif [ ${#segs[@]} -gt 0 ]; then
     if [ -z "$fps_val" ] || [ "$fps_val" = "0/0" ]; then
         fps_val=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$first_file" | head -n 1 | tr -d '\r')
     fi
-    if [ -z "$fps_val" ] || [ "$fps_val" = "0/0" ]; then
-        fps_val="25/1"
-    fi
+    [ -z "$fps_val" ] || [ "$fps_val" = "0/0" ] && fps_val="25/1"
 
     printf '%s\n' "${segs[@]}" | sort | sed "s/.*/file '&'/" > list.txt
 
