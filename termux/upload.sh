@@ -4,17 +4,22 @@
 #  har biri uchun ALOHIDA "faqat shu epizodni kodlaydigan" workflow
 #  yaratadi va bittasi push qiladi.
 #
-#  ISHLATILISHI:
-#      GITHUB_TOKEN='tokeningiz' bash upload.sh
+#  BIR MARTA (token saqlash):
+#      echo 'tokeningiz' > ~/.anime_token && chmod 600 ~/.anime_token
+#
+#  KEYIN HAR SAFAR — shu bitta qator, boshqa hech narsa kerak emas:
+#      bash upload.sh
 #          -> anime/ ichidagi hali yuklanmagan BARCHA papkalarni topib,
 #             hammasini bitta push bilan yuklaydi.
 #
-#      GITHUB_TOKEN='tokeningiz' bash upload.sh <epizod_nomi>
+#      bash upload.sh <epizod_nomi>
 #          -> faqat shu bitta epizodni yuklaydi.
 #
 #  ⚠️  TOKEN XAVFSIZLIGI: tokeningizni bu faylning ICHIGA yozmang —
-#  bu fayl git tomonidan kuzatiladi. Har doim yuqoridagidek, buyruqning
-#  o'zida GITHUB_TOKEN=... sifatida bering (fayl ichida saqlanmaydi).
+#  bu fayl git tomonidan kuzatiladi va GitHub'ga push bo'ladi (GitHub
+#  buni avtomatik aniqlab, tokenni darhol bekor qiladi). Token faqat
+#  ~/.anime_token faylida (git repo'dan TASHQARIDA, Termux $HOME'da)
+#  saqlanadi — bu fayl hech qachon GitHub'ga yuborilmaydi.
 # ============================================================
 
 set -uo pipefail
@@ -22,7 +27,8 @@ set -uo pipefail
 # ───────────────────────── SOZLAMALAR ─────────────────────────
 GITHUB_USERNAME="ogabekraximov650-del"
 GITHUB_REPO="anime"
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+TOKEN_FILE="$HOME/.anime_token"
+GITHUB_TOKEN="${GITHUB_TOKEN:-$(cat "$TOKEN_FILE" 2>/dev/null || true)}"
 
 REPO_DIR="$HOME/anime-repo"                 # git klon shu yerda (Termux ichida)
 ANIME_SRC="/storage/emulated/0/anime"       # ts fayllar shu yerda
@@ -31,8 +37,9 @@ STATE_FILE="$HOME/.anime_uploaded.log"      # allaqachon yuklangan epizodlar ro'
 # ────────────────────────────────────────────────────────────
 
 if [ -z "$GITHUB_TOKEN" ]; then
-    echo "❌ GITHUB_TOKEN berilmagan."
-    echo "   Ishlatilishi: GITHUB_TOKEN='tokeningiz' bash upload.sh"
+    echo "❌ Token topilmadi."
+    echo "   Bir marta saqlang: echo 'tokeningiz' > ~/.anime_token && chmod 600 ~/.anime_token"
+    echo "   Shundan keyin shunchaki: bash upload.sh"
     exit 1
 fi
 
