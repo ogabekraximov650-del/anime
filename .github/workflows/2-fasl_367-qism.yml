@@ -1,4 +1,4 @@
-name: Encode 100393067443_2-fasl_367-qism
+name: Encode 2-fasl_367-qism
 
 on:
   workflow_dispatch: {}
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: encode-100393067443_2-fasl_367-qism
+  group: encode-2-fasl_367-qism
   cancel-in-progress: false
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
           printf '%s%s%s' "${{ secrets.PYRO_SESSION_B64_1 }}" "${{ secrets.PYRO_SESSION_B64_2 }}" "${{ secrets.PYRO_SESSION_B64_3 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
 
       - name: Encode episode
-        run: bash scripts/encode.sh "100393067443_2-fasl_367-qism"
+        run: bash scripts/encode.sh "2-fasl_367-qism"
 
       - name: Upload to Telegram and send link
         env:
@@ -67,14 +67,13 @@ jobs:
       - name: Cleanup processed source files and this workflow
         if: success()
         run: |
-          FOLDER="100393067443_2-fasl_367-qism"
+          FOLDER="2-fasl_367-qism"
           NAME=$(cat .encode_meta_name 2>/dev/null || echo "")
           rm -rf "anime/$FOLDER"
-          rm -f "anipng/${FOLDER}.png"
-          [ -n "$NAME" ] && rm -f anipng/*_"${NAME}".png
+          [ -n "$NAME" ] && rm -f "anipng/${NAME}.png"
           [ -n "$NAME" ] && rm -f "${NAME}.mp4"
           rm -f .encode_meta_chat .encode_meta_name
-          rm -f ".github/workflows/100393067443_2-fasl_367-qism.yml"
+          rm -f ".github/workflows/2-fasl_367-qism.yml"
 
       - name: Commit cleanup
         if: success()
@@ -83,7 +82,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "chore: 100393067443_2-fasl_367-qism yuklandi va tozalandi [skip encode]"
+            git commit -m "chore: 2-fasl_367-qism yuklandi va tozalandi [skip encode]"
             git push
           else
             echo "Tozalanadigan narsa topilmadi."
