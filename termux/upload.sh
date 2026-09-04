@@ -116,19 +116,22 @@ DONE=()
 for FOLDER in "${TO_PROCESS[@]}"; do
     SRC_FOLDER="$ANIME_SRC/$FOLDER"
 
-    if [ ! -d "$SRC_FOLDER" ] || ! ls "$SRC_FOLDER"/seg_*.ts >/dev/null 2>&1; then
-        echo "⚠️  $FOLDER: seg_*.ts topilmadi, o'tkazib yuborildi"
+    if [ ! -d "$SRC_FOLDER" ]; then
+        echo "⚠️  $FOLDER: papka topilmadi, o'tkazib yuborildi"
+        continue
+    fi
+    if ! ls "$SRC_FOLDER"/seg_*.ts >/dev/null 2>&1 && ! ls "$SRC_FOLDER"/*.mp4 >/dev/null 2>&1; then
+        echo "⚠️  $FOLDER: seg_*.ts yoki *.mp4 topilmadi, o'tkazib yuborildi"
         continue
     fi
     if ! ls "$SRC_FOLDER"/*.png >/dev/null 2>&1; then
-        echo "⚠️  $FOLDER: cover .png topilmadi (ts fayllar bilan bir papkada bo'lishi kerak), o'tkazib yuborildi"
+        echo "⚠️  $FOLDER: cover .png topilmadi (papka ichida bo'lishi kerak), o'tkazib yuborildi"
         continue
     fi
 
-    echo "📁 $FOLDER ko'chirilmoqda..."
+    echo "📁 $FOLDER ko'chirilmoqda (papkadagi BARCHA fayllar)..."
     mkdir -p "anime/$FOLDER" "anipng" ".github/workflows"
-    cp -f "$SRC_FOLDER"/seg_*.ts "anime/$FOLDER/"
-    cp -f "$SRC_FOLDER"/*.png "anime/$FOLDER/"
+    cp -f "$SRC_FOLDER"/* "anime/$FOLDER/"
     cp -f "$ANIPNG_SRC/logo.png" "anipng/logo.png"
 
     echo "🛠  Workflow yaratilmoqda: .github/workflows/${FOLDER}.yml"
