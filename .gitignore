@@ -11,7 +11,7 @@ list.txt
 # Har ehtimolga qarshi: kodlangan natija ham commit qilinmasin
 # (workflow buni uploaddan keyin o'zi o'chiradi, lekin qo'lda push qilinsa ham
 # tasodifan repo ichida qolib ketmasin)
-Final_*_H264.mp4
+*.mp4
 
 # GitHub Token yozilgan shaxsiy nusxa — HECH QACHON commit qilinmasin
 termux/*.local.sh
