@@ -2,12 +2,14 @@
 """
 Telegram video yuklash skripti (Pyrogram + TgCrypto).
 
-Ishlatish:
-    python3 -u telegram_upload.py 2-fasl_7-qism.mp4 --chat 1003716499451 --user 12345678 --name 2-fasl_7-qism
+Kanal ishlatilmaydi — video to'g'ridan-to'g'ri belgilangan user'ning
+shaxsiy chatiga yuklanadi.
 
-  --chat  : video yuboriladigan kanal/guruh ID (papka nomidan olinadi)
-  --user  : yuborilgan videoning HAVOLASI jo'natiladigan foydalanuvchi ID
-            (anipng/<USER_ID>_logo.png nomidan olinadi)
+Ishlatish:
+    python3 -u telegram_upload.py 2-fasl_7-qism.mp4 --user 12345678 --name 2-fasl_7-qism
+
+  --user  : videoning yuklanadigan foydalanuvchi ID (anipng/<USER_ID>_logo.png
+            fayl nomidan olinadi)
   --name  : epizod nomi. Undagi pastki chiziqlar sarlavhada bo'sh joyga
             aylanadi: "2-fasl_7-qism" -> "2-fasl 7-qism"
 """
@@ -27,12 +29,7 @@ if not API_ID or not API_HASH:
 
 
 def norm_id(raw):
-    """Telegram ID'ni to'g'ri shaklga keltiradi.
-
-    Kanal/supergroup ID'lari '-100...' shaklida bo'ladi. Papka nomiga minus
-    belgisini yozish noqulay bo'lgani uchun, '100' bilan boshlanadigan uzun
-    raqamga minus avtomatik qo'shiladi.
-    """
+    """Telegram foydalanuvchi ID'sini butun songa aylantiradi."""
     if raw is None:
         return None
     raw = str(raw).strip()
@@ -40,10 +37,6 @@ def norm_id(raw):
         return None
     if raw.startswith("@"):
         return raw
-    if raw.startswith("-"):
-        return int(raw)
-    if raw.startswith("100") and len(raw) >= 13:
-        return int("-" + raw)
     try:
         return int(raw)
     except ValueError:
@@ -87,12 +80,12 @@ def get_thumbnail(video_path: str, name: str):
     """(yo'l, biz_yaratdikmi) — cover rasmni topadi yoki videodan kadr oladi."""
     anipng = Path(video_path).resolve().parent / "anipng"
     if anipng.is_dir():
-        for img in sorted(anipng.glob(f"*_{name}.png")):
-            if not img.name.endswith("_logo.png"):
-                return str(img), False
         exact = anipng / f"{name}.png"
         if exact.exists():
             return str(exact), False
+        for img in sorted(anipng.glob(f"*_{name}.png")):
+            if not img.name.endswith("_logo.png"):
+                return str(img), False
 
     try:
         tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
@@ -131,9 +124,13 @@ def make_progress(label: str):
     return callback
 
 
-async def main(video: str, chat_id, user_id, name: str):
+async def main(video: str, user_id, name: str):
     if not os.path.exists(video):
         print(f"❌ Topilmadi: {video}")
+        sys.exit(1)
+
+    if not user_id:
+        print("❌ --user berilmagan — kanal ishlatilmagani uchun bu shart.")
         sys.exit(1)
 
     # Pastki chiziqlar sarlavhada bo'sh joyga aylanadi
@@ -143,11 +140,11 @@ async def main(video: str, chat_id, user_id, name: str):
     async with Client(SESSION, api_id=API_ID, api_hash=API_HASH) as app:
         me = await app.get_me()
         print(f"✅ Ulandi: {me.first_name} (@{me.username})", flush=True)
-        print(f"   Kanal: {chat_id} | Havola uchun user: {user_id or 'yo‘q'}", flush=True)
+        print(f"   Yuboriladigan user: {user_id}", flush=True)
         print(f"   Sarlavha: {caption}", flush=True)
 
-        # Maxfiy/kam faol kanal-guruhlarni peer keshiga olish. Telegram kam
-        # faol suhbatlarni avtomatik ARXIVLAYDI (folder_id=1) — standart
+        # Maxfiy/kam faol suhbatlarni peer keshiga olish. Telegram kam faol
+        # suhbatlarni avtomatik ARXIVLAYDI (folder_id=1) — standart
         # get_dialogs() (folder_id=0) ularni ko'rmaydi, shuning uchun
         # ikkalasini ham aylanib chiqamiz.
         print("🔎 Suhbatlar ro'yxati o'qilmoqda (asosiy + arxiv)...", flush=True)
@@ -173,7 +170,7 @@ async def main(video: str, chat_id, user_id, name: str):
 
         try:
             msg = await app.send_video(
-                chat_id,
+                user_id,
                 video=video,
                 caption=caption,              # FAQAT toza nom, boshqa hech narsa
                 file_name=f"{caption}.mp4",
@@ -185,29 +182,7 @@ async def main(video: str, chat_id, user_id, name: str):
             if thumb_owned and thumb and os.path.exists(thumb):
                 os.unlink(thumb)
 
-        print(f"\n✅ Kanalga yuborildi (message id: {msg.id})", flush=True)
-
-        # --- Havolani olish ---
-        link = None
-        try:
-            link = msg.link
-        except Exception:
-            link = None
-        if not link:
-            cid = str(msg.chat.id)
-            if cid.startswith("-100"):
-                link = f"https://t.me/c/{cid[4:]}/{msg.id}"
-        print(f"🔗 Havola: {link or 'olinmadi'}", flush=True)
-
-        # --- Havolani foydalanuvchiga yuborish ---
-        if user_id and link:
-            try:
-                await app.send_message(user_id, f"{caption}\n{link}")
-                print(f"✉️  Havola {user_id} ga yuborildi.", flush=True)
-            except Exception as e:
-                print(f"⚠️  Havolani {user_id} ga yuborib bo'lmadi: {e}", flush=True)
-        elif not user_id:
-            print("ℹ️  User ID berilmagan — havola yuborilmadi.", flush=True)
+        print(f"\n✅ {user_id} ga yuborildi (message id: {msg.id})", flush=True)
 
 
 if __name__ == "__main__":
@@ -217,21 +192,16 @@ if __name__ == "__main__":
         sys.exit(1)
 
     video = args[0]
-    chat_raw = user_raw = None
+    user_raw = None
     name = Path(video).stem
 
     i = 1
     while i < len(args):
-        if args[i] == "--chat" and i + 1 < len(args):
-            chat_raw = args[i + 1]; i += 2
-        elif args[i] == "--user" and i + 1 < len(args):
+        if args[i] == "--user" and i + 1 < len(args):
             user_raw = args[i + 1]; i += 2
         elif args[i] == "--name" and i + 1 < len(args):
             name = args[i + 1]; i += 2
         else:
             i += 1
 
-    if chat_raw is None:
-        chat_raw = os.environ.get("TG_CHAT_ID", "me")
-
-    asyncio.run(main(video, norm_id(chat_raw), norm_id(user_raw), name))
+    asyncio.run(main(video, norm_id(user_raw), name))

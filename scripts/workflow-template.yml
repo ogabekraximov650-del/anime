@@ -42,13 +42,12 @@ jobs:
       - name: Encode episode
         run: bash scripts/encode.sh "__FOLDER__"
 
-      - name: Upload to Telegram and send link
+      - name: Upload to Telegram (user chatiga to'g'ridan-to'g'ri)
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           PYTHONUNBUFFERED: "1"
         run: |
-          CHAT_ID=$(cat .encode_meta_chat)
           NAME=$(cat .encode_meta_name)
           LOGO=$(ls anipng/*_logo.png 2>/dev/null | head -n 1)
           if [ -n "$LOGO" ]; then
@@ -56,9 +55,13 @@ jobs:
           else
             USER_ID=""
           fi
-          echo "Kanal: $CHAT_ID | User: $USER_ID | Nom: $NAME"
+          if [ -z "$USER_ID" ]; then
+            echo "::error::User ID topilmadi (anipng/<user_id>_logo.png kerak)"
+            exit 1
+          fi
+          echo "User: $USER_ID | Nom: $NAME"
           python3 -u scripts/telegram_upload.py "${NAME}.mp4" \
-            --chat "$CHAT_ID" --user "$USER_ID" --name "$NAME"
+            --user "$USER_ID" --name "$NAME"
 
       - name: Remove Telegram session from disk
         if: always()
@@ -72,7 +75,7 @@ jobs:
           rm -rf "anime/$FOLDER"
           [ -n "$NAME" ] && rm -f "anipng/${NAME}.png"
           [ -n "$NAME" ] && rm -f "${NAME}.mp4"
-          rm -f .encode_meta_chat .encode_meta_name
+          rm -f .encode_meta_name
           rm -f ".github/workflows/__WFFILE__.yml"
 
       - name: Commit cleanup

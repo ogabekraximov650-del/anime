@@ -6,9 +6,8 @@
 #              30_9-qism         (boshidan 30 soniya kesiladi)
 #              0_9-qism          (0 soniya — kesish yo'q)
 #
-# Barcha videolar DOIM shu kanalga yuboriladi (kanal ID papka nomida
-# ko'rsatilmaydi — o'zgarmas):
-CHAT_ID="1003716499451"
+# Kanal ishlatilmaydi — video anipng/<USER_ID>_logo.png fayl nomidan
+# olingan USER_ID'ning shaxsiy chatiga to'g'ridan-to'g'ri yuboriladi.
 #
 # Manba ikki turdagi bo'lishi mumkin — IKKALASI HAM bir xil natija beradi
 # (3 soniyalik cover-intro + TRIM'dan keyingi asosiy video + intro tugagach
@@ -39,7 +38,6 @@ if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [ -n "$rest" ]; then
     CLEAN_NAME="$rest"
 fi
 
-echo "$CHAT_ID" > "$REPO_ROOT/.encode_meta_chat"
 echo "$CLEAN_NAME" > "$REPO_ROOT/.encode_meta_name"
 
 ANIME_DIR="$REPO_ROOT/anime/$FOLDER"
@@ -68,7 +66,7 @@ if [ ! -d "$ANIME_DIR" ]; then
     exit 1
 fi
 
-echo "=== $CLEAN_NAME ishlanmoqda (kanal: $CHAT_ID, kesish: ${TRIM_SEC}s) ==="
+echo "=== $CLEAN_NAME ishlanmoqda (kesish: ${TRIM_SEC}s) ==="
 echo "    Cover : $(basename "$COVER_IMG")"
 echo "    Logo  : $(basename "$LOGO")"
 echo "    Natija: ${CLEAN_NAME}.mp4"
