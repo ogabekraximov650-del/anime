@@ -15,6 +15,10 @@
 # chiqadigan logotip):
 #   anime/<papka>/seg_*.ts — video bo'laklari (concat qilinadi)
 #   anime/<papka>/*.mp4    — tayyor video (concat'siz, to'g'ridan-to'g'ri)
+#
+# Audio har doim standart AAC, 2 kanal (stereo), 44.1kHz'ga qayta kodlanadi
+# — manba fayldagi g'ayrioddiy audio formatlar (ba'zi HW dekoderlarda ovoz
+# chiqmasligiga sabab bo'ladigan) shu bilan tuzatiladi.
 
 set -uo pipefail
 shopt -s nullglob
@@ -156,7 +160,7 @@ if [ ${#mp4s[@]} -gt 0 ]; then
         -c:v libx264 -preset medium -crf 18 \
         -g 48 -keyint_min 48 -sc_threshold 0 \
         -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
-        -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 \
+        -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$remain_sec"
     status=$?
@@ -198,7 +202,7 @@ elif [ ${#segs[@]} -gt 0 ]; then
         -c:v libx264 -preset medium -crf 18 \
         -g 48 -keyint_min 48 -sc_threshold 0 \
         -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
-        -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 \
+        -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$remain_sec"
     status=$?
