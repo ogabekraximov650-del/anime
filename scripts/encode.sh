@@ -76,7 +76,7 @@ printf '%s\n' "${segs[@]}" | sort | sed "s/.*/file '&'/" > list.txt
 total_ts_kb=$(du -ck seg_*.ts | grep total | awk '{print $1}')
 total_ts_mb=$(awk "BEGIN {printf \"%.1f\", $total_ts_kb/1024}")
 
-ffmpeg -f concat -safe 0 -i list.txt \
+stdbuf -oL ffmpeg -f concat -safe 0 -i list.txt \
     -loop 1 -t 3 -i "$COVER_IMG" \
     -i "$LOGO" \
     -f lavfi -t 3 -i anullsrc=r=44100:cl=stereo \

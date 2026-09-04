@@ -54,7 +54,8 @@ jobs:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: python3 scripts/telegram_upload.py "Final___FOLDER___H264.mp4"
+          PYTHONUNBUFFERED: "1"
+        run: python3 -u scripts/telegram_upload.py "Final___FOLDER___H264.mp4"
 
       - name: Remove Telegram session from disk
         if: always()
