@@ -64,9 +64,50 @@ agar `gh` o'rnatilgan bo'lsa).
 
 ## 4. Termux'dan yuklash
 
-`termux/upload.sh <epizod_nomi>` — berilgan epizodni (`anime/<nomi>` va
-`anipng/<nomi>.png`) repo klonига ko'chiradi, shablondan
-`.github/workflows/<nomi>.yml` yasaydi va hammasini birga push qiladi.
+`termux/upload.sh` — to'liq mustaqil skript: klonlash/pull/push va har
+epizod uchun alohida `.yml` yaratish — barchasi shu bitta faylda.
+**Argumentsiz ishga tushirilsa, `anime/` ichidagi hali yuklanmagan BARCHA
+papkalarni topib, hammasini bitta push bilan yuklaydi.**
+
+1. **Personal Access Token yarating**: GitHub → Settings → Developer settings
+   → Personal access tokens → Fine-grained tokens → faqat shu `anime`
+   repo'siga, **Contents: Read and write** huquqi bilan.
+
+   ⚠️ Tokenni hech qachon boshqa birov bilan baham ko'rmang, chatga
+   yozmang, yoki skriptning ICHIGA yozib qo'ymang — u faqat buyruq
+   ichida, muhit o'zgaruvchisi sifatida beriladi (pastda ko'rsatilgan),
+   hech qachon faylga saqlanmaydi.
+
+2. Bir marta repo'ni klonlab oling (yoki quyidagi buyruq birinchi
+   ishga tushishda o'zi klonlaydi):
+
+   ```sh
+   GITHUB_TOKEN='tokeningiz' bash -c '
+     REPO_DIR="$HOME/anime-repo"
+     [ -d "$REPO_DIR/.git" ] || git clone "https://ogabekraximov650-del:${GITHUB_TOKEN}@github.com/ogabekraximov650-del/anime.git" "$REPO_DIR"
+     bash "$REPO_DIR/termux/upload.sh"
+   '
+   ```
+
+3. Keyingi safar (repo allaqachon `$HOME/anime-repo`da bo'lsa), shunchaki:
+
+   ```sh
+   GITHUB_TOKEN='tokeningiz' bash "$HOME/anime-repo/termux/upload.sh"
+   ```
+
+   — barcha yangi (hali yuklanmagan) epizodlarni topib, ularning har biri
+   uchun `anime/<nomi>/` + `anipng/<nomi>.png` + `anipng/logo.png`ni
+   ko'chiradi, har biriga alohida `.github/workflows/<nomi>.yml` yasaydi
+   va hammasini BITTA commit+push bilan yuboradi (tarmoq xatosida 4
+   martagacha qayta urinadi). Muvaffaqiyatli yuklangan epizodlar
+   `~/.anime_uploaded.log`ga yoziladi — keyingi ishga tushirishda ular
+   qayta yuklanmaydi, faqat yangi qo'shilgan papkalar yuboriladi.
+
+   Faqat bitta muayyan epizodni yuklamoqchi bo'lsangiz:
+
+   ```sh
+   GITHUB_TOKEN='tokeningiz' bash "$HOME/anime-repo/termux/upload.sh" aybsiz_8
+   ```
 
 ## 5. Muvaffaqiyatsizlik holati
 

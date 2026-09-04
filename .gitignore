@@ -13,4 +13,8 @@ list.txt
 # tasodifan repo ichida qolib ketmasin)
 Final_*_H264.mp4
 
+# GitHub Token yozilgan shaxsiy nusxa — HECH QACHON commit qilinmasin
+termux/*.local.sh
+termux/.push.log
+
 .DS_Store
