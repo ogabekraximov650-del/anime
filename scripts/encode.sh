@@ -147,7 +147,7 @@ if [ ${#mp4s[@]} -gt 0 ]; then
     [ -z "$fps_val" ] || [ "$fps_val" = "0/0" ] && fps_val="25/1"
 
     total_sec=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$SRC_MAIN" 2>/dev/null | cut -d. -f1)
-    [ -z "$total_sec" ] && total_sec=0
+    [[ "$total_sec" =~ ^[0-9]+$ ]] || total_sec=0
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
@@ -189,7 +189,7 @@ elif [ ${#segs[@]} -gt 0 ]; then
     total_ts_mb=$(awk "BEGIN {printf \"%.1f\", $total_ts_kb/1024}")
 
     total_sec=$(ffprobe -v error -f concat -safe 0 -show_entries format=duration -of csv=p=0 list.txt 2>/dev/null | head -n 1 | cut -d. -f1)
-    [ -z "$total_sec" ] && total_sec=0
+    [[ "$total_sec" =~ ^[0-9]+$ ]] || total_sec=0
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
