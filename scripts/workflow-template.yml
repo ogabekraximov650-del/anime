@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: encode-__FOLDER__
+  group: encode-__WFFILE__
   cancel-in-progress: false
 
 jobs:
@@ -74,7 +74,7 @@ jobs:
           rm -f "anipng/${FOLDER}.png"
           rm -f anipng/*_"${NAME}".png
           rm -f "${NAME}.mp4"
-          rm -f ".github/workflows/__FOLDER__.yml"
+          rm -f ".github/workflows/__WFFILE__.yml"
 
       - name: Commit cleanup
         if: success()
