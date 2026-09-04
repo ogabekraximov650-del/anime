@@ -73,6 +73,9 @@ fi
 
 printf '%s\n' "${segs[@]}" | sort | sed "s/.*/file '&'/" > list.txt
 
+total_ts_kb=$(du -ck seg_*.ts | grep total | awk '{print $1}')
+total_ts_mb=$(awk "BEGIN {printf \"%.1f\", $total_ts_kb/1024}")
+
 ffmpeg -f concat -safe 0 -i list.txt \
     -loop 1 -t 3 -i "$COVER_IMG" \
     -i "$LOGO" \
@@ -84,7 +87,29 @@ ffmpeg -f concat -safe 0 -i list.txt \
     -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
     -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 \
     -movflags +faststart \
-    -y -loglevel error "$OUTPUT"
+    -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | {
+        tick=0
+        f=0; fps_now=0; br="0kbits/s"; sz=0; tm="00:00:00"; sp="?"
+        while IFS='=' read -r key value; do
+            value="${value//$'\r'/}"
+            case "$key" in
+                frame)      f="$value" ;;
+                fps)        fps_now="$value" ;;
+                bitrate)    br="$value" ;;
+                total_size) sz="$value" ;;
+                out_time)   tm="${value:0:8}" ;;
+                speed)      sp="$value" ;;
+                progress)
+                    tick=$((tick + 1))
+                    if [ "$value" = "end" ] || [ $((tick % 25)) -eq 0 ]; then
+                        fmt_sz=$(awk "BEGIN {printf \"%.1f\", ${sz:-0}/1048576}")
+                        clean_br=$(echo "${br:-0kbits/s}" | tr -d 'kbits/s' | xargs)
+                        echo "[$FOLDER] ${total_ts_mb}MB->${fmt_sz}MB | frm:${f:-0} | vaqt:${tm:-00:00:00} | fps:${fps_now:-0} | br:${clean_br}kbps | tezlik:${sp:-?}"
+                    fi
+                    ;;
+            esac
+        done
+    }
 
 status=$?
 rm -f list.txt

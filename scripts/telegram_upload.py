@@ -239,7 +239,15 @@ async def main(files: list, force_doc: bool):
     async with Client(SESSION, api_id=API_ID, api_hash=API_HASH) as app:
         me = await app.get_me()
         print(f"✅ Ulandi: {me.first_name} (@{me.username})")
-        print(f"   Manzil: {CHAT_ID}\n")
+        print(f"   Manzil: {CHAT_ID}")
+
+        # Maxfiy (private) kanal/guruhlar uchun: Pyrogram raqamli ID orqali
+        # yuborishdan oldin o'sha peer keshda bo'lishi kerak. Suhbatlar
+        # ro'yxatini bir marta o'qib chiqish shuni ta'minlaydi.
+        print("🔎 Suhbatlar ro'yxati o'qilmoqda (maxfiy kanallarni aniqlash uchun)...")
+        async for _ in app.get_dialogs():
+            pass
+        print("   Tayyor.\n")
 
         ok = 0
         for f in files:
