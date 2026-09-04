@@ -143,14 +143,11 @@ async def main(video: str, user_id, name: str):
         print(f"   Yuboriladigan user: {user_id}", flush=True)
         print(f"   Sarlavha: {caption}", flush=True)
 
-        # Maxfiy/kam faol suhbatlarni peer keshiga olish. Telegram kam faol
-        # suhbatlarni avtomatik ARXIVLAYDI (folder_id=1) — standart
-        # get_dialogs() (folder_id=0) ularni ko'rmaydi, shuning uchun
-        # ikkalasini ham aylanib chiqamiz.
-        print("🔎 Suhbatlar ro'yxati o'qilmoqda (asosiy + arxiv)...", flush=True)
-        for folder_id in (0, 1):
-            async for _ in app.get_dialogs(folder_id=folder_id):
-                pass
+        # Peer keshiga olish uchun suhbatlar ro'yxatini o'qib chiqamiz
+        # (aks holda PeerIdInvalid xatosi chiqishi mumkin).
+        print("🔎 Suhbatlar ro'yxati o'qilmoqda...", flush=True)
+        async for _ in app.get_dialogs():
+            pass
         print("   Tayyor.", flush=True)
 
         meta = get_video_metadata(video)
