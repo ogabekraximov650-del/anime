@@ -40,11 +40,11 @@ jobs:
 
       - name: Restore Telegram session
         run: |
-          if [ -z "${{ secrets.PYRO_SESSION_B64 }}" ]; then
-            echo "::error::PYRO_SESSION_B64 sekret o'rnatilmagan (repo Settings -> Secrets and variables -> Actions)"
+          if [ -z "${{ secrets.PYRO_SESSION_B64_1 }}" ]; then
+            echo "::error::PYRO_SESSION_B64_1/2/3 sekretlari o'rnatilmagan (repo Settings -> Secrets and variables -> Actions)"
             exit 1
           fi
-          echo "${{ secrets.PYRO_SESSION_B64 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
+          printf '%s%s%s' "${{ secrets.PYRO_SESSION_B64_1 }}" "${{ secrets.PYRO_SESSION_B64_2 }}" "${{ secrets.PYRO_SESSION_B64_3 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
 
       - name: Encode episode
         run: bash scripts/encode.sh "__FOLDER__"
