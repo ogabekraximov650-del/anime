@@ -1,39 +1,71 @@
 #!/usr/bin/env bash
-# anime/ ichidagi BARCHA papkalarni BIRIN-KETIN ishlaydi:
-#   1) shu papkani kodlaydi (encode.sh)
-#   2) tayyor videoni Telegramga (logo.png'dagi USER_ID chatiga) yuklaydi
-#   3) muvaffaqiyatli bo'lsa — papkani o'chirib, commit+push qiladi
-#   4) shundan keyingina KEYINGI papkaga o'tadi
+# Cloudflare R2 ("anime" bucket) ichidagi BARCHA epizod papkalarni
+# BIRIN-KETIN ishlaydi:
+#   1) R2'dan shu papkani yuklab oladi
+#   2) kodlaydi (encode.sh)
+#   3) tayyor videoni Telegramga (logo.png'dagi USER_ID chatiga) yuklaydi
+#   4) muvaffaqiyatli bo'lsa — papkani R2'dan o'chirib tashlaydi
+#   5) shundan keyingina KEYINGI papkaga o'tadi
 #
 # Birortasida xatolik chiqsa — shu yerda to'xtaydi (keyingilarga o'tilmaydi),
-# shunda muammoli papka repo'da qoladi va keyingi ishga tushirishda undan
+# shunda muammoli papka R2'da qoladi va keyingi ishga tushirishda undan
 # davom etiladi.
+#
+# R2 bucket tuzilishi:
+#   s3://<BUCKET>/<papka>/seg_*.ts yoki *.mp4  — video manba
+#   s3://<BUCKET>/<papka>/*.png                 — cover; FAYL NOMI = epizod nomi
+#   s3://<BUCKET>/_logo/<USER_ID>_logo.png       — Telegram yuboriladigan user
+#
+# Kerakli muhit o'zgaruvchilari:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 API tokeni
+#   R2_ENDPOINT                              — https://<account_id>.r2.cloudflarestorage.com
+#   R2_BUCKET                                 — bucket nomi (masalan: anime)
 set -uo pipefail
 shopt -s nullglob
+
+: "${R2_ENDPOINT:?R2_ENDPOINT muhit ozgaruvchisi kerak}"
+: "${R2_BUCKET:?R2_BUCKET muhit ozgaruvchisi kerak}"
+: "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID muhit ozgaruvchisi kerak}"
+: "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY muhit ozgaruvchisi kerak}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-folders=(anime/*/)
-if [ ${#folders[@]} -eq 0 ]; then
-    echo "ℹ️  anime/ ichida ishlanadigan papka topilmadi."
+s3() { aws s3 "$@" --endpoint-url "$R2_ENDPOINT"; }
+
+# --- Logo(lar)ni R2'dan yuklab olish ---
+mkdir -p anipng
+s3 cp "s3://$R2_BUCKET/_logo/" anipng/ --recursive --only-show-errors || true
+
+if ! ls anipng/*_logo.png >/dev/null 2>&1 && [ ! -f anipng/logo.png ]; then
+    echo "::error::R2'da s3://$R2_BUCKET/_logo/ ichida logo topilmadi"
+    exit 1
+fi
+
+# --- Bucketdagi epizod papkalarini (top-level prefikslar) ro'yxatga olish ---
+mapfile -t sorted_folders < <(
+    s3 ls "s3://$R2_BUCKET/" | awk '$1 == "PRE" {print $2}' | sed 's#/$##' | grep -vx '_logo' | sort
+)
+
+if [ ${#sorted_folders[@]} -eq 0 ]; then
+    echo "ℹ️  R2'da ishlanadigan papka topilmadi."
     exit 0
 fi
 
-# --- Papkalarni nom bo'yicha tartiblash ---
-# Papka nomi ixtiyoriy (raqam yoki har qanday matn) bo'lishi mumkin — asl
-# epizod nomi baribir cover .png'dan olinadi, shuning uchun bu yerda faqat
-# barqaror tartib uchun oddiy alifbo/lug'at tartibida saralanadi.
-mapfile -t sorted_folders < <(for f in "${folders[@]}"; do basename "$f"; done | sort)
-
 echo "📋 Ishlanadigan papkalar (${#sorted_folders[@]} ta): ${sorted_folders[*]}"
-
-git config user.name "github-actions[bot]"
-git config user.email "github-actions[bot]@users.noreply.github.com"
 
 for FOLDER in "${sorted_folders[@]}"; do
     echo ""
     echo "::group::=== Papka: $FOLDER ==="
+
+    echo "☁️  R2'dan yuklab olinmoqda..."
+    rm -rf "anime/$FOLDER"
+    mkdir -p "anime/$FOLDER"
+    if ! s3 cp "s3://$R2_BUCKET/$FOLDER/" "anime/$FOLDER/" --recursive; then
+        echo "::error::$FOLDER: R2'dan yuklab olishda xatolik — jarayon to'xtatildi."
+        echo "::endgroup::"
+        exit 1
+    fi
 
     if ! bash scripts/encode.sh "$FOLDER"; then
         echo "::error::$FOLDER: kodlashda xatolik — jarayon to'xtatildi."
@@ -50,7 +82,7 @@ for FOLDER in "${sorted_folders[@]}"; do
         USER_ID=""
     fi
     if [ -z "$USER_ID" ]; then
-        echo "::error::User ID topilmadi (anipng/<user_id>_logo.png kerak) — jarayon to'xtatildi."
+        echo "::error::User ID topilmadi (_logo/<user_id>_logo.png kerak) — jarayon to'xtatildi."
         echo "::endgroup::"
         exit 1
     fi
@@ -63,15 +95,10 @@ for FOLDER in "${sorted_folders[@]}"; do
         exit 1
     fi
 
-    echo "🧹 $FOLDER tozalanmoqda va commit qilinmoqda..."
+    echo "🧹 $FOLDER R2'dan o'chirilmoqda..."
+    s3 rm "s3://$R2_BUCKET/$FOLDER/" --recursive
     rm -rf "anime/$FOLDER"
     rm -f "${NAME}.mp4" .encode_meta_name
-
-    git add -A
-    if ! git diff --cached --quiet; then
-        git commit -m "chore: $NAME yuklandi va tozalandi [skip encode]"
-        git push
-    fi
 
     echo "✅ $FOLDER ($NAME) tayyor va yuborildi."
     echo "::endgroup::"

@@ -1,64 +1,90 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ============================================================
-#  Anime papkasidagi BARCHA yangi epizodlarni GitHub'ga yuklaydi.
-#  Kodlash BITTA umumiy ".github/workflows/encode.yml" workflow orqali
-#  amalga oshiriladi — u anime/ ichidagi papkalarni BIRIN-KETIN kodlab,
-#  Telegramga yuklab boradi (bittasi tugamasdan ikkinchisiga o'tmaydi).
+#  Anime papkasidagi BARCHA yangi epizodlarni Cloudflare R2'ga yuklaydi
+#  (GitHub'ga endi hech qanday video/rasm push qilinmaydi).
+#
+#  Kodlash GitHub'dagi BITTA ".github/workflows/encode.yml" workflow
+#  orqali amalga oshiriladi — u R2'dagi papkalarni BIRIN-KETIN yuklab
+#  olib kodlaydi, Telegramga yuklaydi, so'ng o'sha papkani R2'dan
+#  o'chirib KEYINGISIGA o'tadi (bittasi tugamasdan ikkinchisiga o'tmaydi).
 #
 #  Papka nomi ixtiyoriy — raqam yoki har qanday matn (masalan: 7, ep1,
 #  anything). Epizodning haqiqiy nomi — papka ichidagi cover .png faylning
 #  nomidan olinadi (masalan: anime/7/2-fasl_367-qism.png). Kesish kerak
 #  bo'lsa papka nomi oldiga "<TRIM_SEC>_" qo'shiladi (masalan: 30_7).
 #
-#  BIR MARTA (token saqlash):
-#      echo 'tokeningiz' > ~/.anime_token && chmod 600 ~/.anime_token
+#  BIR MARTA kerak bo'ladigan tayyorgarlik:
+#    1) aws-cli o'rnatish (Termux'da):
+#         pkg install python -y && pip install awscli
+#    2) R2 ma'lumotlarini saqlash — ~/.r2_credentials fayliga:
+#         echo 'ACCESS_KEY_ID=xxxxxxxx'                                > ~/.r2_credentials
+#         echo 'SECRET_ACCESS_KEY=xxxxxxxx'                           >> ~/.r2_credentials
+#         echo 'ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com' >> ~/.r2_credentials
+#         chmod 600 ~/.r2_credentials
 #
 #  KEYIN HAR SAFAR — shu bitta qator, boshqa hech narsa kerak emas:
 #      bash upload.sh
 #          -> anime/ ichidagi hali yuklanmagan BARCHA papkalarni topib,
-#             hammasini bitta push bilan yuklaydi.
+#             hammasini R2'ga yuklaydi.
 #
 #      bash upload.sh <papka_nomi>
 #          -> faqat shu bitta papkani yuklaydi.
 #
-#  Push qilingandan keyin GitHub'da "Actions" bo'limidan "Encode"
-#  workflow'ini qo'lda ishga tushiring ("Run workflow") — u anime/
-#  ichidagi HAMMA papkalarni birin-ketin ishlab chiqadi.
+#  Yuklangandan keyin GitHub'da "Actions" bo'limidan "Encode" workflow'ini
+#  qo'lda ishga tushiring ("Run workflow") — u R2'dagi HAMMA papkalarni
+#  birin-ketin ishlab chiqadi.
 #
-#  ⚠️  TOKEN XAVFSIZLIGI: tokeningizni bu faylning ICHIGA yozmang —
-#  bu fayl git tomonidan kuzatiladi va GitHub'ga push bo'ladi (GitHub
-#  buni avtomatik aniqlab, tokenni darhol bekor qiladi). Token faqat
-#  ~/.anime_token faylida (git repo'dan TASHQARIDA, Termux $HOME'da)
-#  saqlanadi — bu fayl hech qachon GitHub'ga yuborilmaydi.
+#  ⚠️  ~/.r2_credentials git repo'dan TASHQARIDA (Termux $HOME'da)
+#  saqlanadi — hech qachon GitHub'ga yuborilmaydi.
 # ============================================================
 
 set -uo pipefail
 
 # ───────────────────────── SOZLAMALAR ─────────────────────────
-GITHUB_USERNAME="ogabekraximov650-del"
-GITHUB_REPO="anime"
-TOKEN_FILE="$HOME/.anime_token"
-GITHUB_TOKEN="${GITHUB_TOKEN:-$(cat "$TOKEN_FILE" 2>/dev/null || true)}"
+R2_CREDS_FILE="$HOME/.r2_credentials"
+BUCKET="anime"
 
-REPO_DIR="$HOME/anime-repo"                 # git klon shu yerda (Termux ichida)
 ANIME_SRC="/storage/emulated/0/anime"       # ts/mp4 fayllar + cover .png shu yerda (har epizod papkasi ichida)
-ANIPNG_SRC="/storage/emulated/0/anipng"     # faqat logo.png shu yerda
+ANIPNG_SRC="/storage/emulated/0/anipng"     # faqat logo.png / <user_id>_logo.png shu yerda
 STATE_FILE="$HOME/.anime_uploaded.log"      # allaqachon yuklangan epizodlar ro'yxati
 # ────────────────────────────────────────────────────────────
 
-if [ -z "$GITHUB_TOKEN" ]; then
-    echo "❌ Token topilmadi."
-    echo "   Bir marta saqlang: echo 'tokeningiz' > ~/.anime_token && chmod 600 ~/.anime_token"
-    echo "   Shundan keyin shunchaki: bash upload.sh"
+if [ ! -f "$R2_CREDS_FILE" ]; then
+    echo "❌ $R2_CREDS_FILE topilmadi. Namuna uchun yuqoridagi izohga qarang."
+    exit 1
+fi
+set -a
+# shellcheck disable=SC1090
+source "$R2_CREDS_FILE"
+set +a
+
+: "${ACCESS_KEY_ID:?$R2_CREDS_FILE ichida ACCESS_KEY_ID topilmadi}"
+: "${SECRET_ACCESS_KEY:?$R2_CREDS_FILE ichida SECRET_ACCESS_KEY topilmadi}"
+: "${ENDPOINT:?$R2_CREDS_FILE ichida ENDPOINT topilmadi}"
+
+export AWS_ACCESS_KEY_ID="$ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$SECRET_ACCESS_KEY"
+
+s3() { aws s3 "$@" --endpoint-url "$ENDPOINT"; }
+
+if ! command -v aws >/dev/null 2>&1; then
+    echo "❌ aws-cli topilmadi. O'rnating: pkg install python -y && pip install awscli"
     exit 1
 fi
 
-if [ ! -f "$ANIPNG_SRC/logo.png" ]; then
-    echo "❌ logo.png topilmadi: $ANIPNG_SRC/logo.png"
+if ! ls "$ANIPNG_SRC"/*_logo.png >/dev/null 2>&1 && [ ! -f "$ANIPNG_SRC/logo.png" ]; then
+    echo "❌ Logo topilmadi: $ANIPNG_SRC/<user_id>_logo.png (yoki logo.png)"
     exit 1
 fi
 
 touch "$STATE_FILE"
+
+# --- Logo(lar)ni har doim R2'ga sinxronlash (arzon, tez) ---
+echo "☁️  Logo yuklanmoqda..."
+for logo in "$ANIPNG_SRC"/*_logo.png "$ANIPNG_SRC/logo.png"; do
+    [ -f "$logo" ] || continue
+    s3 cp "$logo" "s3://$BUCKET/_logo/$(basename "$logo")" --only-show-errors
+done
 
 # --- Yuklanadigan epizodlar ro'yxatini aniqlash ---
 TO_PROCESS=()
@@ -82,40 +108,6 @@ fi
 
 echo "📋 Yuklanadigan epizodlar (${#TO_PROCESS[@]} ta): ${TO_PROCESS[*]}"
 
-REMOTE_URL="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
-
-LOG="$(mktemp 2>/dev/null || echo "/data/data/com.termux/files/usr/tmp/upload_push.$$.log")"
-cleanup() { rm -f "$LOG"; }
-trap cleanup EXIT
-
-# Log'da tasodifan token qolib ketmasligi uchun — chop etishdan oldin har doim shu orqali filtrlanadi.
-show_log() {
-    sed "s#${GITHUB_TOKEN}#***#g" "$LOG"
-}
-
-# --- Repo klonlash yoki yangilash ---
-echo "🔄 Repo tayyorlanmoqda..."
-if [ -d "$REPO_DIR/.git" ]; then
-    if ! git -C "$REPO_DIR" remote set-url origin "$REMOTE_URL" >"$LOG" 2>&1; then
-        show_log; exit 1
-    fi
-    if ! git -C "$REPO_DIR" pull --ff-only origin main >"$LOG" 2>&1; then
-        echo "❌ 'git pull' muvaffaqiyatsiz tugadi:"
-        show_log
-        exit 1
-    fi
-else
-    rm -rf "$REPO_DIR"
-    if ! git clone "$REMOTE_URL" "$REPO_DIR" >"$LOG" 2>&1; then
-        echo "❌ 'git clone' muvaffaqiyatsiz tugadi:"
-        show_log
-        exit 1
-    fi
-fi
-
-cd "$REPO_DIR"
-
-# --- Har bir epizodni tayyorlash ---
 DONE=()
 for FOLDER in "${TO_PROCESS[@]}"; do
     SRC_FOLDER="$ANIME_SRC/$FOLDER"
@@ -133,48 +125,47 @@ for FOLDER in "${TO_PROCESS[@]}"; do
         continue
     fi
 
-    echo "📁 $FOLDER ko'chirilmoqda (papkadagi BARCHA fayllar)..."
-    mkdir -p "anime/$FOLDER" "anipng"
-    cp -f "$SRC_FOLDER"/* "anime/$FOLDER/"
-    cp -f "$ANIPNG_SRC/logo.png" "anipng/logo.png"
+    echo "☁️  $FOLDER R2'ga yuklanmoqda (papkadagi BARCHA fayllar)..."
+    attempt=1
+    ok=0
+    while [ "$attempt" -le 4 ]; do
+        if s3 cp "$SRC_FOLDER" "s3://$BUCKET/$FOLDER/" --recursive; then
+            ok=1
+            break
+        fi
+        [ "$attempt" -ge 4 ] && break
+        wait_s=$(( attempt * 5 ))
+        echo "⏳ $FOLDER: muvaffaqiyatsiz, ${wait_s}s dan keyin qayta urinish ($attempt/3)..."
+        sleep "$wait_s"
+        attempt=$((attempt + 1))
+    done
 
-    git add "anime/$FOLDER"
+    if [ "$ok" -ne 1 ]; then
+        echo "❌ $FOLDER: yuklashda xatolik (4 urinishdan keyin), o'tkazib yuborildi"
+        continue
+    fi
+
+    # --- R2'da haqiqatan ham borligini tasdiqlash (yuklash "tugadi" deb
+    #     faqat shundan keyin hisoblanadi) ---
+    remote_count=$(s3 ls "s3://$BUCKET/$FOLDER/" --recursive 2>/dev/null | wc -l)
+    local_count=$(ls -1 "$SRC_FOLDER" | wc -l)
+    if [ "$remote_count" -lt "$local_count" ]; then
+        echo "❌ $FOLDER: R2'da tasdiqlanmadi (mahalliy: $local_count, R2: $remote_count), o'tkazib yuborildi"
+        continue
+    fi
+
+    echo "✅ $FOLDER tasdiqlandi (R2'da $remote_count fayl)."
     DONE+=("$FOLDER")
 done
 
-git add "anipng/logo.png" 2>/dev/null || true
-
 if [ ${#DONE[@]} -eq 0 ]; then
-    echo "ℹ️  Yuklashga yaroqli epizod topilmadi."
+    echo "ℹ️  Yuklashga yaroqli/yuklangan epizod yo'q."
     exit 0
 fi
-
-if git diff --cached --quiet; then
-    echo "ℹ️  Yangi o'zgarish yo'q, push qilinmadi."
-    exit 0
-fi
-
-git commit -m "epizodlar: ${DONE[*]}" >"$LOG" 2>&1 || { show_log; exit 1; }
-
-# --- Push (tarmoq xatosida 4 martagacha qayta urinish) ---
-echo "🚀 Push qilinmoqda..."
-attempt=1
-until git push origin main >"$LOG" 2>&1; do
-    if [ "$attempt" -ge 4 ]; then
-        echo "❌ Push muvaffaqiyatsiz tugadi (4 urinishdan keyin):"
-        show_log
-        exit 1
-    fi
-    wait_s=$(( attempt * 5 ))
-    echo "⏳ Push muvaffaqiyatsiz, ${wait_s}s dan keyin qayta urinish ($attempt/3)..."
-    sleep "$wait_s"
-    attempt=$((attempt + 1))
-done
 
 # --- Muvaffaqiyatli yuklanganlarni mahalliy ro'yxatga yozish ---
 printf '%s\n' "${DONE[@]}" >> "$STATE_FILE"
 
-echo "✅ Push qilindi: ${DONE[*]}"
+echo "✅ Yuklandi: ${DONE[*]}"
 echo "   Endi GitHub'dagi 'Actions' -> 'Encode' -> 'Run workflow' tugmasini bosing —"
-echo "   u anime/ ichidagi HAMMA papkalarni birin-ketin kodlab, Telegramga yuklaydi."
-echo "   Kuzatish: https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}/actions"
+echo "   u R2'dagi HAMMA papkalarni birin-ketin kodlab, Telegramga yuklaydi."
