@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Ishlatilishi: encode.sh <papka_nomi>
-#   <papka_nomi> = [<TRIM_SEC>_]<epizod_nomi>
+#   <papka_nomi> = [<TRIM_SEC>_]<raqam>  — masalan: 7, 30_7 (30 soniya kesish bilan)
 #     TRIM_SEC (ixtiyoriy) — video boshidan necha soniya kesib tashlanadi.
-#     Masalan: 9-qism            (kesish yo'q)
-#              30_9-qism         (boshidan 30 soniya kesiladi)
-#              0_9-qism          (0 soniya — kesish yo'q)
+#
+# Epizodning ASL NOMI papka ichidagi cover .png faylning nomidan olinadi
+# (masalan anime/7/2-fasl_367-qism.png -> nom: "2-fasl_367-qism"), CHIQISH
+# fayli va Telegram sarlavhasi ham shu nom bilan bo'ladi. Papka nomining
+# o'zi (raqam) faqat ichki tashkiliy maqsadda ishlatiladi.
 #
 # Kanal ishlatilmaydi — video anipng/<USER_ID>_logo.png fayl nomidan
 # olingan USER_ID'ning shaxsiy chatiga to'g'ridan-to'g'ri yuboriladi.
@@ -14,8 +16,7 @@
 # chiqadigan logotip):
 #   anime/<papka>/seg_*.ts — video bo'laklari (concat qilinadi)
 #   anime/<papka>/*.mp4    — tayyor video (concat'siz, to'g'ridan-to'g'ri)
-#   anime/<papka>/*.png    — 3 soniyalik cover-intro rasm (shu papka ichida,
-#                            ts/mp4 fayllar bilan birga yuklanadi)
+#   anime/<papka>/*.png    — 3 soniyalik cover-intro rasm; NOMI = epizod nomi
 #
 # Audio har doim standart AAC, 2 kanal (stereo), 44.1kHz'ga qayta kodlanadi.
 
@@ -31,19 +32,14 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-# --- Papka nomini ajratish: [<TRIM>_]<NAME> ---
+# --- Papka nomini ajratish: [<TRIM>_]<raqam> ---
 IFS='_' read -r p1 rest <<< "$FOLDER"
 TRIM_SEC=0
-CLEAN_NAME="$FOLDER"
-if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [ -n "$rest" ]; then
+if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [ -n "$rest" ] && [[ "$rest" =~ ^[0-9]+$ ]]; then
     TRIM_SEC="$p1"
-    CLEAN_NAME="$rest"
 fi
 
-echo "$CLEAN_NAME" > "$REPO_ROOT/.encode_meta_name"
-
 ANIME_DIR="$REPO_ROOT/anime/$FOLDER"
-OUTPUT="$REPO_ROOT/${CLEAN_NAME}.mp4"
 
 # --- Logotip: anipng/<USER_ID>_logo.png (havola shu ID'ga yuboriladi) ---
 logos=("$REPO_ROOT"/anipng/*_logo.png)
@@ -61,13 +57,17 @@ if [ ! -d "$ANIME_DIR" ]; then
     exit 1
 fi
 
-# --- Cover: anime/<papka>/*.png (ts/mp4 fayllar bilan birga yuklanadi) ---
+# --- Cover: anime/<papka>/*.png — FAYL NOMI = epizod nomi ---
 covers=("$ANIME_DIR"/*.png)
 if [ ${#covers[@]} -eq 0 ] || [ ! -f "${covers[0]}" ]; then
     echo "::error::Cover rasm topilmadi (anime/$FOLDER ichida .png fayl bo'lishi kerak)"
     exit 1
 fi
 COVER_IMG="${covers[0]}"
+CLEAN_NAME="$(basename "$COVER_IMG" .png)"
+
+echo "$CLEAN_NAME" > "$REPO_ROOT/.encode_meta_name"
+OUTPUT="$REPO_ROOT/${CLEAN_NAME}.mp4"
 
 echo "=== $CLEAN_NAME ishlanmoqda (kesish: ${TRIM_SEC}s) ==="
 echo "    Cover : $(basename "$COVER_IMG")"

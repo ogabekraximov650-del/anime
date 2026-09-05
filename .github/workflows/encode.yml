@@ -1,0 +1,51 @@
+name: Encode
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: encode
+  cancel-in-progress: false
+
+jobs:
+  encode-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install --no-cache-dir -r scripts/requirements.txt
+
+      - name: Restore Telegram session
+        run: |
+          if [ -z "${{ secrets.PYRO_SESSION_B64_1 }}" ]; then
+            echo "::error::PYRO_SESSION_B64_1/2/3 sekretlari topilmadi"
+            exit 1
+          fi
+          printf '%s%s%s' "${{ secrets.PYRO_SESSION_B64_1 }}" "${{ secrets.PYRO_SESSION_B64_2 }}" "${{ secrets.PYRO_SESSION_B64_3 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
+
+      - name: Papkalarni birin-ketin kodlash va Telegramga yuklash
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          PYTHONUNBUFFERED: "1"
+        run: bash scripts/process_all.sh
+
+      - name: Remove Telegram session from disk
+        if: always()
+        run: rm -f scripts/pyro_session.session

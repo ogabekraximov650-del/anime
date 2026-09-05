@@ -1,8 +1,13 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ============================================================
-#  Anime papkasidagi BARCHA yangi epizodlarni GitHub'ga yuklaydi,
-#  har biri uchun ALOHIDA "faqat shu epizodni kodlaydigan" workflow
-#  yaratadi va bittasi push qiladi.
+#  Anime papkasidagi BARCHA yangi epizodlarni GitHub'ga yuklaydi.
+#  Kodlash BITTA umumiy ".github/workflows/encode.yml" workflow orqali
+#  amalga oshiriladi — u anime/ ichidagi papkalarni BIRIN-KETIN kodlab,
+#  Telegramga yuklab boradi (bittasi tugamasdan ikkinchisiga o'tmaydi).
+#
+#  Papka nomi shunchaki RAQAM (masalan: 7, yoki kesish kerak bo'lsa 30_7).
+#  Epizodning haqiqiy nomi — papka ichidagi cover .png faylning nomidan
+#  olinadi (masalan: anime/7/2-fasl_367-qism.png).
 #
 #  BIR MARTA (token saqlash):
 #      echo 'tokeningiz' > ~/.anime_token && chmod 600 ~/.anime_token
@@ -12,8 +17,12 @@
 #          -> anime/ ichidagi hali yuklanmagan BARCHA papkalarni topib,
 #             hammasini bitta push bilan yuklaydi.
 #
-#      bash upload.sh <epizod_nomi>
-#          -> faqat shu bitta epizodni yuklaydi.
+#      bash upload.sh <papka_nomi>
+#          -> faqat shu bitta papkani yuklaydi.
+#
+#  Push qilingandan keyin GitHub'da "Actions" bo'limidan "Encode"
+#  workflow'ini qo'lda ishga tushiring ("Run workflow") — u anime/
+#  ichidagi HAMMA papkalarni birin-ketin ishlab chiqadi.
 #
 #  ⚠️  TOKEN XAVFSIZLIGI: tokeningizni bu faylning ICHIGA yozmang —
 #  bu fayl git tomonidan kuzatiladi va GitHub'ga push bo'ladi (GitHub
@@ -31,7 +40,7 @@ TOKEN_FILE="$HOME/.anime_token"
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(cat "$TOKEN_FILE" 2>/dev/null || true)}"
 
 REPO_DIR="$HOME/anime-repo"                 # git klon shu yerda (Termux ichida)
-ANIME_SRC="/storage/emulated/0/anime"       # ts fayllar + cover .png shu yerda (har epizod papkasi ichida)
+ANIME_SRC="/storage/emulated/0/anime"       # ts/mp4 fayllar + cover .png shu yerda (har epizod papkasi ichida)
 ANIPNG_SRC="/storage/emulated/0/anipng"     # faqat logo.png shu yerda
 STATE_FILE="$HOME/.anime_uploaded.log"      # allaqachon yuklangan epizodlar ro'yxati
 # ────────────────────────────────────────────────────────────
@@ -103,12 +112,6 @@ else
     fi
 fi
 
-TEMPLATE="$REPO_DIR/scripts/workflow-template.yml"
-if [ ! -f "$TEMPLATE" ]; then
-    echo "❌ Shablon topilmadi: $TEMPLATE (repo to'g'ri klonlanganini tekshiring)"
-    exit 1
-fi
-
 cd "$REPO_DIR"
 
 # --- Har bir epizodni tayyorlash ---
@@ -125,19 +128,16 @@ for FOLDER in "${TO_PROCESS[@]}"; do
         continue
     fi
     if ! ls "$SRC_FOLDER"/*.png >/dev/null 2>&1; then
-        echo "⚠️  $FOLDER: cover .png topilmadi (papka ichida bo'lishi kerak), o'tkazib yuborildi"
+        echo "⚠️  $FOLDER: cover .png topilmadi (epizod nomi shundan olinadi), o'tkazib yuborildi"
         continue
     fi
 
     echo "📁 $FOLDER ko'chirilmoqda (papkadagi BARCHA fayllar)..."
-    mkdir -p "anime/$FOLDER" "anipng" ".github/workflows"
+    mkdir -p "anime/$FOLDER" "anipng"
     cp -f "$SRC_FOLDER"/* "anime/$FOLDER/"
     cp -f "$ANIPNG_SRC/logo.png" "anipng/logo.png"
 
-    echo "🛠  Workflow yaratilmoqda: .github/workflows/${FOLDER}.yml"
-    sed "s/__FOLDER__/$FOLDER/g" "$TEMPLATE" > ".github/workflows/${FOLDER}.yml"
-
-    git add "anime/$FOLDER" ".github/workflows/${FOLDER}.yml"
+    git add "anime/$FOLDER"
     DONE+=("$FOLDER")
 done
 
@@ -174,5 +174,6 @@ done
 printf '%s\n' "${DONE[@]}" >> "$STATE_FILE"
 
 echo "✅ Push qilindi: ${DONE[*]}"
-echo "   GitHub Actions har biri uchun alohida ishga tushadi."
+echo "   Endi GitHub'dagi 'Actions' -> 'Encode' -> 'Run workflow' tugmasini bosing —"
+echo "   u anime/ ichidagi HAMMA papkalarni birin-ketin kodlab, Telegramga yuklaydi."
 echo "   Kuzatish: https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}/actions"
