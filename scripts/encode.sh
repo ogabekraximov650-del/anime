@@ -32,10 +32,12 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-# --- Papka nomini ajratish: [<TRIM>_]<raqam> ---
+# --- Papka nomini ajratish: [<TRIM>_]<xohlagan_nom> ---
+# Papka nomining o'zi ixtiyoriy — raqam, so'z, har qanday narsa bo'lishi
+# mumkin, faqat TRIM_SEC prefiksi (bor bo'lsa) shu shaklda tanib olinadi.
 IFS='_' read -r p1 rest <<< "$FOLDER"
 TRIM_SEC=0
-if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [ -n "$rest" ] && [[ "$rest" =~ ^[0-9]+$ ]]; then
+if [[ "$p1" =~ ^[0-9]+$ ]] && [ ${#p1} -le 4 ] && [ -n "$rest" ]; then
     TRIM_SEC="$p1"
 fi
 

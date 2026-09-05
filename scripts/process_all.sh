@@ -20,22 +20,11 @@ if [ ${#folders[@]} -eq 0 ]; then
     exit 0
 fi
 
-# --- Papkalarni haqiqiy epizod raqami bo'yicha tartiblash ---
-# (papka nomi "raqam" yoki "TRIM_raqam" bo'lishi mumkin — tartib TRIM'siz
-# haqiqiy raqamga qarab olinadi, shunda 30_7 bilan 7 bir xil o'ringa tushadi)
-sort_input=""
-for f in "${folders[@]}"; do
-    name="$(basename "$f")"
-    IFS='_' read -r p1 rest <<< "$name"
-    if [[ "$p1" =~ ^[0-9]+$ ]] && [ -n "$rest" ] && [[ "$rest" =~ ^[0-9]+$ ]]; then
-        order_key="$rest"
-    else
-        order_key="$p1"
-    fi
-    sort_input+="$order_key"$'\t'"$name"$'\n'
-done
-
-mapfile -t sorted_folders < <(printf '%s' "$sort_input" | sort -n -k1,1 -t $'\t' | cut -f2)
+# --- Papkalarni nom bo'yicha tartiblash ---
+# Papka nomi ixtiyoriy (raqam yoki har qanday matn) bo'lishi mumkin — asl
+# epizod nomi baribir cover .png'dan olinadi, shuning uchun bu yerda faqat
+# barqaror tartib uchun oddiy alifbo/lug'at tartibida saralanadi.
+mapfile -t sorted_folders < <(for f in "${folders[@]}"; do basename "$f"; done | sort)
 
 echo "📋 Ishlanadigan papkalar (${#sorted_folders[@]} ta): ${sorted_folders[*]}"
 

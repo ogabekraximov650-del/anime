@@ -5,9 +5,10 @@
 #  amalga oshiriladi — u anime/ ichidagi papkalarni BIRIN-KETIN kodlab,
 #  Telegramga yuklab boradi (bittasi tugamasdan ikkinchisiga o'tmaydi).
 #
-#  Papka nomi shunchaki RAQAM (masalan: 7, yoki kesish kerak bo'lsa 30_7).
-#  Epizodning haqiqiy nomi — papka ichidagi cover .png faylning nomidan
-#  olinadi (masalan: anime/7/2-fasl_367-qism.png).
+#  Papka nomi ixtiyoriy — raqam yoki har qanday matn (masalan: 7, ep1,
+#  anything). Epizodning haqiqiy nomi — papka ichidagi cover .png faylning
+#  nomidan olinadi (masalan: anime/7/2-fasl_367-qism.png). Kesish kerak
+#  bo'lsa papka nomi oldiga "<TRIM_SEC>_" qo'shiladi (masalan: 30_7).
 #
 #  BIR MARTA (token saqlash):
 #      echo 'tokeningiz' > ~/.anime_token && chmod 600 ~/.anime_token
