@@ -11,10 +11,10 @@
 # shunda muammoli papka R2'da qoladi va keyingi ishga tushirishda undan
 # davom etiladi.
 #
-# R2 bucket tuzilishi:
+# R2 bucket tuzilishi (faqat video manba — logo avvalgidek GitHub repo'dagi
+# anipng/<USER_ID>_logo.png fayl nomidan olinadi, R2'ga tegishli emas):
 #   s3://<BUCKET>/<papka>/seg_*.ts yoki *.mp4  — video manba
 #   s3://<BUCKET>/<papka>/*.png                 — cover; FAYL NOMI = epizod nomi
-#   s3://<BUCKET>/_logo/<USER_ID>_logo.png       — Telegram yuboriladigan user
 #
 # Kerakli muhit o'zgaruvchilari:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 API tokeni
@@ -33,18 +33,16 @@ cd "$REPO_ROOT" || exit 1
 
 s3() { aws s3 "$@" --endpoint-url "$R2_ENDPOINT"; }
 
-# --- Logo(lar)ni R2'dan yuklab olish ---
-mkdir -p anipng
-s3 cp "s3://$R2_BUCKET/_logo/" anipng/ --recursive --only-show-errors || true
-
+# --- Logo: GitHub repo'dagi anipng/<USER_ID>_logo.png (checkout'dan
+#     allaqachon bor, R2'dan hech narsa yuklanmaydi) ---
 if ! ls anipng/*_logo.png >/dev/null 2>&1 && [ ! -f anipng/logo.png ]; then
-    echo "::error::R2'da s3://$R2_BUCKET/_logo/ ichida logo topilmadi"
+    echo "::error::Logotip topilmadi (anipng/<user_id>_logo.png repo'da bo'lishi kerak)"
     exit 1
 fi
 
 # --- Bucketdagi epizod papkalarini (top-level prefikslar) ro'yxatga olish ---
 mapfile -t sorted_folders < <(
-    s3 ls "s3://$R2_BUCKET/" | awk '$1 == "PRE" {print $2}' | sed 's#/$##' | grep -vx '_logo' | sort
+    s3 ls "s3://$R2_BUCKET/" | awk '$1 == "PRE" {print $2}' | sed 's#/$##' | sort
 )
 
 if [ ${#sorted_folders[@]} -eq 0 ]; then

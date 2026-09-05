@@ -13,6 +13,9 @@
 #  nomidan olinadi (masalan: anime/7/2-fasl_367-qism.png). Kesish kerak
 #  bo'lsa papka nomi oldiga "<TRIM_SEC>_" qo'shiladi (masalan: 30_7).
 #
+#  Logo (anipng/<USER_ID>_logo.png) bu skriptga TEGISHLI EMAS — u avvalgidek
+#  GitHub repo'da git orqali boshqariladi (R2'ga yuklanmaydi).
+#
 #  BIR MARTA kerak bo'ladigan tayyorgarlik:
 #    1) aws-cli o'rnatish (Termux'da):
 #         pkg install python -y && pip install awscli
@@ -45,7 +48,6 @@ R2_CREDS_FILE="$HOME/.r2_credentials"
 BUCKET="anime"
 
 ANIME_SRC="/storage/emulated/0/anime"       # ts/mp4 fayllar + cover .png shu yerda (har epizod papkasi ichida)
-ANIPNG_SRC="/storage/emulated/0/anipng"     # faqat logo.png / <user_id>_logo.png shu yerda
 STATE_FILE="$HOME/.anime_uploaded.log"      # allaqachon yuklangan epizodlar ro'yxati
 # ────────────────────────────────────────────────────────────
 
@@ -72,19 +74,10 @@ if ! command -v aws >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! ls "$ANIPNG_SRC"/*_logo.png >/dev/null 2>&1 && [ ! -f "$ANIPNG_SRC/logo.png" ]; then
-    echo "❌ Logo topilmadi: $ANIPNG_SRC/<user_id>_logo.png (yoki logo.png)"
-    exit 1
-fi
-
 touch "$STATE_FILE"
 
-# --- Logo(lar)ni har doim R2'ga sinxronlash (arzon, tez) ---
-echo "☁️  Logo yuklanmoqda..."
-for logo in "$ANIPNG_SRC"/*_logo.png "$ANIPNG_SRC/logo.png"; do
-    [ -f "$logo" ] || continue
-    s3 cp "$logo" "s3://$BUCKET/_logo/$(basename "$logo")" --only-show-errors
-done
+# Eslatma: logo (anipng/<user_id>_logo.png) bu yerga tegishli emas —
+# u avvalgidek GitHub repo'da git orqali boshqariladi, R2'ga yuklanmaydi.
 
 # --- Yuklanadigan epizodlar ro'yxatini aniqlash ---
 TO_PROCESS=()
