@@ -112,6 +112,27 @@ run_progress() {
     done
 }
 
+# Filtergraph'ni quradi. TRIM_SEC > 0 bo'lsa kesish INPUT -ss orqali emas,
+# filtr ichida (trim/atrim) bajariladi — sabab: "-ss" concat demuxer bilan
+# birga ishlatilganda audioga butun davomiylik bo'ylab doimiy keng polosali
+# shovqin ("shivirlash") qo'shadi. Bitta faylda -ss zararsiz, aynan concat
+# bilan birga muammo tug'diradi, shuning uchun umuman ishlatilmaydi.
+build_filter() {
+    local vtrim="" atrim="" amain="[0:a]"
+    if [ "$TRIM_SEC" -gt 0 ]; then
+        vtrim="trim=start=${TRIM_SEC},setpts=PTS-STARTPTS,"
+        atrim="[0:a]atrim=start=${TRIM_SEC},asetpts=PTS-STARTPTS[main_a];"
+        amain="[main_a]"
+    fi
+    printf '%s' \
+"[1:v]scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h,setsar=1,fps=$fps_val[c_v];\
+[0:v]${vtrim}scale=$w:$h,setsar=1,fps=$fps_val[main_v];\
+[2:v]scale=200:-1[l];\
+${atrim}\
+[c_v][3:a][main_v]${amain}concat=n=2:v=1:a=1[full_v][full_a];\
+[full_v][l]overlay=main_w-overlay_w-20:20:enable='gte(t,3)',format=yuv420p[out_v]"
+}
+
 if [ ${#mp4s[@]} -gt 0 ]; then
     # ─────────── MP4 REJIMI: tayyor video, lekin ts rejimi bilan BIR XIL natija ───────────
     SRC_MAIN="${mp4s[0]}"
@@ -135,11 +156,12 @@ if [ ${#mp4s[@]} -gt 0 ]; then
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
-    stdbuf -oL ffmpeg -ss "$TRIM_SEC" -i "$SRC_MAIN" \
+    FILTER="$(build_filter)"
+    stdbuf -oL ffmpeg -i "$SRC_MAIN" \
         -loop 1 -t 3 -i "$COVER_IMG" \
         -i "$LOGO" \
         -f lavfi -t 3 -i anullsrc=r=44100:cl=stereo \
-        -filter_complex "[1:v]scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h,setsar=1,fps=$fps_val[c_v];[0:v]scale=$w:$h,setsar=1,fps=$fps_val[main_v];[2:v]scale=200:-1[l];[c_v][3:a][main_v][0:a]concat=n=2:v=1:a=1[full_v][full_a];[full_v][l]overlay=main_w-overlay_w-20:20:enable='gte(t,3)',format=yuv420p[out_v]" \
+        -filter_complex "$FILTER" \
         -map "[out_v]" -map "[full_a]" \
         -c:v libx264 -preset medium -crf 18 \
         -g 48 -keyint_min 48 -sc_threshold 0 \
@@ -177,11 +199,12 @@ elif [ ${#segs[@]} -gt 0 ]; then
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
-    stdbuf -oL ffmpeg -ss "$TRIM_SEC" -f concat -safe 0 -i list.txt \
+    FILTER="$(build_filter)"
+    stdbuf -oL ffmpeg -f concat -safe 0 -i list.txt \
         -loop 1 -t 3 -i "$COVER_IMG" \
         -i "$LOGO" \
         -f lavfi -t 3 -i anullsrc=r=44100:cl=stereo \
-        -filter_complex "[1:v]scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h,setsar=1,fps=$fps_val[c_v];[0:v]scale=$w:$h,setsar=1,fps=$fps_val[main_v];[2:v]scale=200:-1[l];[c_v][3:a][main_v][0:a]concat=n=2:v=1:a=1[full_v][full_a];[full_v][l]overlay=main_w-overlay_w-20:20:enable='gte(t,3)',format=yuv420p[out_v]" \
+        -filter_complex "$FILTER" \
         -map "[out_v]" -map "[full_a]" \
         -c:v libx264 -preset medium -crf 18 \
         -g 48 -keyint_min 48 -sc_threshold 0 \
