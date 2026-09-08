@@ -168,7 +168,7 @@ if [ ${#mp4s[@]} -gt 0 ]; then
         -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
         -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \
-        -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$remain_sec"
+        -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$(( remain_sec + 3 ))"
     status=$?
 
 elif [ ${#segs[@]} -gt 0 ]; then
@@ -191,10 +191,13 @@ elif [ ${#segs[@]} -gt 0 ]; then
 
     printf '%s\n' "${segs[@]}" | sort | sed "s/.*/file '&'/" > list.txt
 
-    total_ts_kb=$(du -ck seg_*.ts | grep total | awk '{print $1}')
-    total_ts_mb=$(awk "BEGIN {printf \"%.1f\", $total_ts_kb/1024}")
-
-    total_sec=$(ffprobe -v error -f concat -safe 0 -show_entries format=duration -of csv=p=0 list.txt 2>/dev/null | head -n 1 | cut -d. -f1)
+    # Umumiy davomiylik: ffprobe concat ro'yxatidan buni ololmaydi ("N/A"
+    # qaytaradi), shuning uchun har bir bo'lakning davomiyligi qo'shiladi.
+    total_sec=$(
+        for s in "${segs[@]}"; do
+            ffprobe -v error -show_entries format=duration -of csv=p=0 "$s" 2>/dev/null
+        done | awk '{ if ($1 ~ /^[0-9.]+$/) t += $1 } END { printf "%d", t }'
+    )
     [[ "$total_sec" =~ ^[0-9]+$ ]] || total_sec=0
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
@@ -211,7 +214,7 @@ elif [ ${#segs[@]} -gt 0 ]; then
         -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
         -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \
-        -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$remain_sec"
+        -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$(( remain_sec + 3 ))"
     status=$?
     rm -f list.txt
 else
