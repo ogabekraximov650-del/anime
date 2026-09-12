@@ -114,3 +114,30 @@ papkalarni topib, hammasini bitta push bilan yuklaydi.**
 Agar kodlash yoki yuklash muvaffaqiyatsiz tugasa, manba fayllar va workflow
 fayli repo'da qoladi (tozalash qadami ishlamaydi) — "Actions" bo'limidan
 xatoni ko'rib, "Re-run jobs" bilan qayta urinib ko'rishingiz mumkin.
+
+## 6. "H265 encode" workflow'i (logotip va rasmsiz)
+
+`.github/workflows/h265-encode.yml` — qo'lda ishga tushiriladigan
+(`workflow_dispatch`) alohida workflow. Oddiy `Encode` workflow'idan farqi:
+
+- video **H.265 / HEVC** (`libx265`) bilan kodlanadi;
+- videoga **hech qanday logotip va hech qanday rasm (cover-intro) qo'yilmaydi** —
+  shunchaki manba video qayta kodlanadi;
+- bitrate: o'rtacha (target) **1500k**, minimal **800k**, maksimal **2000k**,
+  buffer (VBV) **2500k**;
+- audio avvalgidek AAC, stereo, 44.1 kHz, 128k.
+
+Ishlatiladigan skriptlar: `scripts/process_all_h265.sh` (R2 → kodlash →
+Telegram → R2'dan tozalash) va `scripts/encode_h265.sh` (ffmpeg qismi).
+
+Epizod nomi: papka ichida `.png` bo'lsa — shu fayl **nomi** (rasmning o'zi
+videoga qo'shilmaydi), bo'lmasa — papka nomining o'zi ishlatiladi.
+
+Telegram manzili: `TG_USER_ID` sekreti bo'lsa — shundan olinadi; bo'lmasa,
+eskisidek `anipng/<USER_ID>_logo.png` fayl **nomidan** o'qiladi (bu holda ham
+logotip videoga qo'yilmaydi).
+
+Eslatma: x265'da "minimal bitrate" uchun qattiq VBV parametri yo'q
+(`vbv-minrate` mavjud emas) — 800k qiymati ffmpeg darajasida beriladi, amalda
+esa pastki chegara ABR target (1500k) orqali ushlab turiladi, shuning uchun
+juda sodda sahnalarda bitrate 800k'dan pastga tushishi mumkin.
