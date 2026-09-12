@@ -181,6 +181,55 @@ lekin ish o'chganda hammasi yo'qolar edi.
 Agar papkada faqat markerlar qolsa (o'chirish yarim ishlagan holat), keyingi
 run uni "allaqachon tugagan" deb tanib, shunchaki tozalab tashlaydi.
 
+### Statistika
+
+Log har bir qadamda aniq raqam beradi. Boshida manbaning asl holati:
+
+```
+    Nom       : 1-qism
+    Manba     : 284 ta seg_*.ts
+    Asl video : 1920x1080 | h264 | 25 fps
+    Asl hajm  : 812.4 MB | 6573 kbps (video+audio) | 1440s
+    Kesish    : 0s | kodlanadigan davomiylik ~1440s
+    Preset    : medium | CRF BASE: 30 | bitrate chegarasi yo'q
+    Sifatlar  : 1080p 720p 480p 360p
+```
+
+Kodlash vaqtida har yarim soniyada (`br:` — hozirgi bitrate):
+
+```
+🎬 [1-qism 1080p] 45.2% | frm:16200 | vaqt:00:10:48 | fps:28.4 | br:571kbps | 45.1MB | tezlik:1.14x
+```
+
+⚠️ Birinchi bir-ikki qatorda `br:` juda kichik ko'rinadi (masalan `0.3kbps`) —
+bu xato emas: ffmpeg hali muxer buferiga ozgina bayt yozgan. Bir necha
+soniyadan keyin haqiqiy qiymatga chiqadi.
+
+Har sifat tugagach:
+
+```
+    ✔ 1080p — 1920x1080 | 245.3 MB | 1440.02s
+      bitrate : 573 kbps jami (video ~445 + audio 128k) | CRF 30
+      manbaga : 6573 kbps -> 573 kbps (9%) | asl hajm 812.4 MB -> 245.3 MB
+```
+
+Va papka oxirida jamlanma jadval (resume bo'lganda, avvalgi run'da
+tayyorlangan sifatlar ham jadvalga tushadi — ma'lumot marker fayllardan
+o'qiladi):
+
+```
+📊 1-qism — yakuniy statistika
+   Asl manba: 1920x1080 | h264 | 812.4 MB | 6573 kbps | 1440s
+   sifat   o'lcham           hajm      bitrate   manbadan
+   1080p   1920x1080     245.3 MB     573 kbps         9%
+   720p    1280x720       98.1 MB     229 kbps         3%
+   480p    854x480        41.2 MB      96 kbps         1%
+   360p    640x360        26.8 MB      62 kbps         1%
+```
+
+Foiz **bitrate bo'yicha** hisoblanadi (hajm bo'yicha emas) — shunda kesish
+(`TRIM_SEC`) qo'llanganda ham raqam adashtirmaydi.
+
 ### Bucket ro'yxati har safar qaytadan o'qiladi
 
 Bitta papka to'liq tugab R2'dan o'chirilgach, bucket **qaytadan** ro'yxatga

@@ -79,11 +79,14 @@ list_folders() {
     s3 ls "s3://$R2_BUCKET/" | awk '$1 == "PRE" {print $2}' | sed 's#/$##' | sort
 }
 
-# ─── Papkadagi eng yangi faylning yoshi (daqiqada) ───
+# ─── Papkadagi eng yangi MANBA faylining yoshi (daqiqada) ───
+# Marker (.md) fayllari HISOBGA OLINMAYDI: ularni workflow o'zi yozadi, va
+# ular hisobga olinsa resume run'i har safar "hali yuklanmoqda" deb papkani
+# o'tkazib yuborardi.
 newest_age_min() {
     local folder="$1" newest ts now
     newest=$(s3 ls "s3://$R2_BUCKET/$folder/" --recursive 2>/dev/null \
-        | awk 'NF >= 4 {print $1" "$2}' | sort | tail -n 1)
+        | awk 'NF >= 4 && $0 !~ /\.md$/ {print $1" "$2}' | sort | tail -n 1)
     if [ -z "$newest" ]; then
         echo 999999
         return
@@ -103,6 +106,8 @@ upload_marker() {
     local tmp attempt
     tmp="$(mktemp)"
     printf '%s\n' "$body" > "$tmp"
+    # Mahalliy nusxa ham qoldiramiz — yakuniy jamlanma jadval shundan o'qiydi
+    cp "$tmp" "anime/$folder/${label}.md" 2>/dev/null || true
     for attempt in 1 2 3; do
         if s3 cp "$tmp" "s3://$R2_BUCKET/$folder/${label}.md"; then
             rm -f "$tmp"
@@ -120,7 +125,7 @@ upload_marker() {
 # ─── Bitta papkani to'liq ishlash ───
 process_folder() {
     local FOLDER="$1"
-    local label line marker file NAME
+    local label line marker file NAME kbps
     local res size_mb dur body sent_at
 
     echo "☁️  R2'dan yuklab olinmoqda..."
@@ -179,6 +184,8 @@ process_folder() {
         res=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x "$file")
         dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$file")
         size_mb=$(awk -v b="$(stat -c%s "$file")" 'BEGIN {printf "%.1f", b/1048576}')
+        kbps=$(awk -v b="$(stat -c%s "$file")" -v d="$dur" \
+            'BEGIN { if (d + 0 > 0) printf "%.0f", b*8/d/1000; else printf "?" }')
 
         echo "📤 $NAME — $label Telegramga yuborilmoqda..."
         if ! python3 -u scripts/telegram_upload.py "$file" \
@@ -198,6 +205,7 @@ process_folder() {
 - Papka: ${FOLDER}
 - O'lcham: ${res}
 - Hajm: ${size_mb} MB
+- Bitrate: ${kbps} kbps
 - Davomiylik: ${dur}s
 - Telegramga yuborilgan (UTC): ${sent_at}"
         if [ -n "$RUN_URL" ]; then
@@ -213,12 +221,42 @@ Bu fayl bor bo'lsa, shu sifat qayta tayyorlanmaydi."
         echo "✅ $NAME — $label tayyor va yuborildi."
     done
 
+    # ─── Yakuniy jamlanma jadval ───
+    # Ma'lumot marker fayllardan o'qiladi, shuning uchun bu run'da o'tkazib
+    # yuborilgan (avvalgi run'da tayyorlangan) sifatlar ham jadvalda bo'ladi.
+    local s_res s_mb s_kbps s_dur s_codec
+    if [ -f .encode_src_stats ]; then
+        IFS=$'\t' read -r s_res s_mb s_kbps s_dur s_codec < .encode_src_stats
+    fi
+    echo ""
+    echo "📊 $NAME — yakuniy statistika"
+    echo "   Asl manba: ${s_res:-?} | ${s_codec:-?} | ${s_mb:-?} MB | ${s_kbps:-?} kbps | ${s_dur:-?}s"
+    printf '   %-7s %-11s %10s %12s %10s\n' "sifat" "o'lcham" "hajm" "bitrate" "manbadan"
+    local m_res m_mb m_kbps m_pct
+    for line in "${plan_lines[@]}"; do
+        label="${line%%$'\t'*}"
+        [ -n "$label" ] || continue
+        marker="anime/$FOLDER/${label}.md"
+        if [ ! -f "$marker" ]; then
+            printf '   %-7s %-11s %10s %12s %10s\n' "$label" "?" "?" "?" "?"
+            continue
+        fi
+        m_res=$(sed -n "s/^- O'lcham: //p" "$marker" | head -1)
+        m_mb=$(sed -n 's/^- Hajm: \(.*\) MB$/\1/p' "$marker" | head -1)
+        m_kbps=$(sed -n 's/^- Bitrate: \(.*\) kbps$/\1/p' "$marker" | head -1)
+        m_pct=$(awk -v o="${m_kbps:-0}" -v s="${s_kbps:-0}" \
+            'BEGIN { if (s + 0 > 0 && o + 0 > 0) printf "%.0f%%", o/s*100; else printf "?" }')
+        printf '   %-7s %-11s %10s %12s %10s\n' \
+            "$label" "${m_res:-?}" "${m_mb:-?} MB" "${m_kbps:-?} kbps" "$m_pct"
+    done
+    echo ""
+
     echo "🧹 $FOLDER R2'dan o'chirilmoqda (markerlar bilan birga)..."
     if ! s3 rm "s3://$R2_BUCKET/$FOLDER/" --recursive; then
         echo "::warning::$FOLDER R2'dan to'liq o'chirilmadi — keyingi run uni markerlari bilan topib tozalaydi."
     fi
     rm -rf "anime/$FOLDER"
-    rm -f .encode_plan .encode_meta_name .encode_out_file
+    rm -f .encode_plan .encode_meta_name .encode_out_file .encode_out_stats .encode_src_stats
 
     echo "🎉 $FOLDER ($NAME) — barcha sifatlar tayyor va yuborildi."
     return 0

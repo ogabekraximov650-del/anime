@@ -154,6 +154,26 @@ if [ -z "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type 
     exit 1
 fi
 
+# ─── Manbaning ASL hajmi va bitrate'i (statistika uchun) ───
+# ts rejimida hamma bo'lakning hajmi qo'shiladi. Bitrate = hajm*8/davomiylik,
+# ya'ni video+audio birgalikda (umumiy bitrate).
+if [ "$SRC_KIND" = "mp4" ]; then
+    SRC_BYTES=$(stat -c%s "$SRC_MAIN")
+else
+    SRC_BYTES=$(for s in "${segs[@]}"; do stat -c%s "$s"; done \
+        | awk '{ t += $1 } END { printf "%d", t }')
+fi
+[[ "$SRC_BYTES" =~ ^[0-9]+$ ]] || SRC_BYTES=0
+SRC_MB=$(awk -v b="$SRC_BYTES" 'BEGIN {printf "%.1f", b/1048576}')
+if [ "$total_sec" -gt 0 ] && [ "$SRC_BYTES" -gt 0 ]; then
+    SRC_KBPS=$(awk -v b="$SRC_BYTES" -v d="$total_sec" 'BEGIN {printf "%.0f", b*8/d/1000}')
+else
+    SRC_KBPS="?"
+fi
+SRC_CODEC=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$PROBE_FILE" 2>/dev/null | head -n 1 | tr -d '\r')
+SRC_FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$PROBE_FILE" 2>/dev/null | head -n 1 | tr -d '\r' \
+    | awk -F/ '{ if ($2 > 0) printf "%.3g", $1/$2; else print "?" }')
+
 # ─── Ladder ───
 LADDER=()
 if [ "$SRC_H" -le "$MAX_HEIGHT" ]; then
@@ -183,14 +203,20 @@ write_plan() {
         printf '%s\t%s\t%s\n' "${h}p" "$h" "$m" >> "$REPO_ROOT/.encode_plan"
     done
     echo "$CAPTION_BASE" > "$REPO_ROOT/.encode_meta_name"
+    # Manba statistikasi — yakuniy jamlanma jadval uchun
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        "${SRC_W}x${SRC_H}" "$SRC_MB" "$SRC_KBPS" "$total_sec" "${SRC_CODEC:-?}" \
+        > "$REPO_ROOT/.encode_src_stats"
 }
 
 print_header() {
-    echo "    Nom    : $CAPTION_BASE"
-    echo "    Manba  : $SRC_LABEL (${SRC_W}x${SRC_H})"
-    echo "    Kesish : ${TRIM_SEC}s | davomiylik ~${remain_sec}s"
-    echo "    Preset : $PRESET | CRF BASE: $CRF_BASE | bitrate chegarasi yo'q"
-    printf '    Sifatlar:'
+    echo "    Nom       : $CAPTION_BASE"
+    echo "    Manba     : $SRC_LABEL"
+    echo "    Asl video : ${SRC_W}x${SRC_H} | ${SRC_CODEC:-?} | ${SRC_FPS:-?} fps"
+    echo "    Asl hajm  : ${SRC_MB} MB | ${SRC_KBPS} kbps (video+audio) | ${total_sec}s"
+    echo "    Kesish    : ${TRIM_SEC}s | kodlanadigan davomiylik ~${remain_sec}s"
+    echo "    Preset    : $PRESET | CRF BASE: $CRF_BASE | bitrate chegarasi yo'q"
+    printf '    Sifatlar  :'
     local e
     for e in "${LADDER[@]}"; do printf ' %sp' "${e%%:*}"; done
     echo ""
@@ -198,18 +224,24 @@ print_header() {
 
 run_progress() {
     local total_ref="$1" label="$2"
-    local last_ms=0 f=0 fps_now=0 sz=0 tm="00:00:00" sp="?" us=0
+    local last_ms=0 f=0 fps_now=0 br="0kbits/s" sz=0 tm="00:00:00" sp="?" us=0
     while IFS='=' read -r key value; do
         value="${value//$'\r'/}"
         case "$key" in
             frame)       f="$value" ;;
             fps)         fps_now="$value" ;;
+            bitrate)     br="$value" ;;
             total_size)  sz="$value" ;;
             out_time_us) us="$value" ;;
             out_time)    tm="${value:0:8}" ;;
             speed)       sp="$value" ;;
             progress)
                 now_ms=$(date +%s%3N)
+                # ffmpeg'ning eng birinchi hisoboti bo'sh bo'ladi
+                # (out_time=N/A, bitrate=N/A) — uni chiqarmaymiz.
+                if [ "$tm" = "N/A" ] || [ -z "${us//[!0-9]/}" ]; then
+                    continue
+                fi
                 if [ "$value" = "end" ] || [ $((now_ms - last_ms)) -ge 500 ]; then
                     last_ms=$now_ms
                     if [ "${total_ref:-0}" -gt 0 ] 2>/dev/null; then
@@ -218,7 +250,8 @@ run_progress() {
                         pct="?"
                     fi
                     mb=$(awk "BEGIN {printf \"%.1f\", ${sz:-0}/1048576}")
-                    echo "🎬 [$CAPTION_BASE $label] ${pct}% | frm:${f:-0} | vaqt:${tm:-00:00:00} | fps:${fps_now:-0} | ${mb}MB | tezlik:${sp:-?}"
+                    clean_br=$(echo "${br:-0kbits/s}" | tr -d 'kbits/s' | xargs)
+                    echo "🎬 [$CAPTION_BASE $label] ${pct}% | frm:${f:-0} | vaqt:${tm:-00:00:00} | fps:${fps_now:-0} | br:${clean_br}kbps | ${mb}MB | tezlik:${sp:-?}"
                 fi
                 ;;
         esac
@@ -304,7 +337,24 @@ render_one() {
         return 1
     fi
 
+    # ─── Statistika: chiqish bitrate'i va manbaga nisbati ───
+    # Bitrate'ni solishtirish kesishdan mustaqil (hajmni solishtirish esa
+    # kesish bo'lganda adashtiradi), shuning uchun foiz bitrate bo'yicha.
+    local out_bytes out_kbps vid_kbps abr_num pct_src
+    out_bytes=$(stat -c%s "$out")
+    out_kbps=$(awk -v b="$out_bytes" -v d="$dur" 'BEGIN {printf "%.0f", b*8/d/1000}')
+    abr_num="${abr%k}"
+    vid_kbps=$(( out_kbps - abr_num ))
+    [ "$vid_kbps" -lt 0 ] && vid_kbps=0
+    pct_src=$(awk -v o="$out_kbps" -v s="$SRC_KBPS" \
+        'BEGIN { if (s + 0 > 0) printf "%.0f%%", o/s*100; else printf "?" }')
+
     echo "    ✔ $label — $res | ${mb} MB | ${dur}s"
+    echo "      bitrate : ${out_kbps} kbps jami (video ~${vid_kbps} + audio ${abr}) | CRF $crf"
+    echo "      manbaga : ${SRC_KBPS} kbps -> ${out_kbps} kbps (${pct_src}) | asl hajm ${SRC_MB} MB -> ${mb} MB"
+
+    printf '%s\t%s\t%s\t%s\t%s\n' "$label" "$res" "$mb" "$out_kbps" "$dur" \
+        > "$REPO_ROOT/.encode_out_stats"
     echo "$out" > "$REPO_ROOT/.encode_out_file"
     return 0
 }
