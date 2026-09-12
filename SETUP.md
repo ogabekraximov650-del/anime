@@ -147,12 +147,53 @@ Manbaning balandligiga qarab, **hech qachon upscale qilinmaydi**:
 tayyorlanmaydi. Nostandart balandlik (masalan 1070p) eng yuqori sifat
 sifatida o'z holicha, `scale`'siz kodlanadi.
 
-**Hamma sifat BITTA `ffmpeg` buyrug'ida, BITTA asl manbadan** chiqariladi
-(`split` filtri). Shuning uchun:
+Har sifat **AYNAN BIR XIL asl manbadan** chiqariladi (hech biri boshqasidan
+qayta siqilmaydi), shuning uchun **barcha sifatning davomiyligi
+mikrosekundigacha bir xil** bo'ladi.
 
-- manba faqat bir marta decode qilinadi (~13% tezroq),
-- hech bir sifat boshqasidan qayta siqilmaydi (ikki karra siqilish yo'q),
-- **barcha sifatning davomiyligi mikrosekundigacha bir xil** bo'ladi.
+### Resume — ish o'chib qolsa qayerdan davom etadi
+
+Har sifat uchun tartib qat'iy:
+
+1. sifat kodlanadi,
+2. Telegramga **to'liq** yuboriladi,
+3. shundan keyingina R2'dagi shu papkaga `<sifat>.md` marker fayli yuklanadi,
+4. keyingi sifatga o'tiladi.
+
+Actions limiti tugab ish o'chib qolsa, papka R2'da qoladi va tugagan
+sifatlarning markerlari ham qoladi:
+
+```
+s3://aniraxuz/1-qism/seg_0001.ts ...
+s3://aniraxuz/1-qism/1080p.md     <- tayyor
+s3://aniraxuz/1-qism/720p.md      <- tayyor
+```
+
+Qayta ishga tushirilganda markeri **bor** sifatlar o'tkazib yuboriladi —
+yuqoridagi holatda ish to'g'ridan-to'g'ri 480p'dan davom etadi. Eng oxirgi
+sifat ham tugagach, papka va ichidagi hamma narsa (markerlar bilan birga)
+R2'dan o'chiriladi.
+
+Shu sababli hamma sifat bitta `ffmpeg` buyrug'ida (`split` filtri bilan)
+emas, **har biri alohida** kodlanadi. Bitta buyruqda ~13% tezroq bo'lardi,
+lekin ish o'chganda hammasi yo'qolar edi.
+
+Agar papkada faqat markerlar qolsa (o'chirish yarim ishlagan holat), keyingi
+run uni "allaqachon tugagan" deb tanib, shunchaki tozalab tashlaydi.
+
+### Bucket ro'yxati har safar qaytadan o'qiladi
+
+Bitta papka to'liq tugab R2'dan o'chirilgach, bucket **qaytadan** ro'yxatga
+olinadi. Shuning uchun workflow ishlayotgan paytda telefondan yuklagan yangi
+papkalar ham **shu run'da** ishlanadi — workflow'ni qayta ishga tushirish
+shart emas.
+
+Buning bitta xavfi bor: workflow siz hali yuklab bo'lmagan papkani olib
+ketishi mumkin (284 ta `.ts` dan 50 tasi yuklangan bo'lsa — yarim video).
+Shuning uchun papkadagi eng yangi faylning yoshi tekshiriladi: `R2_SETTLE_MIN`
+daqiqadan yosh bo'lsa (standart **2**), papka bu aylanishda o'tkazib
+yuboriladi va keyingi aylanishda o'z-o'zidan navbatga qaytadi. `0` qilsa
+tekshiruv o'chadi.
 
 ### Telegram sarlavhasi
 
@@ -193,5 +234,14 @@ ko'rsatadi, shuning uchun artefaktlar kattalashadi):
 ⚠️ `slow` preset'da uzun epizodlar GitHub runner'ining 360 daqiqalik
 chekloviga yetib qolishi mumkin — avval bitta epizodda sinab ko'ring.
 
-Ishlatiladigan skriptlar: `scripts/process_all_h265.sh` (R2 → kodlash →
-Telegram → R2'dan tozalash) va `scripts/encode_h265.sh` (ffmpeg qismi).
+### Ishlatiladigan skriptlar
+
+- `scripts/process_all_h265.sh` — bosh oqim: R2 → kodlash → Telegram →
+  marker → R2'dan tozalash, va papka ro'yxatini qayta o'qish.
+- `scripts/encode_h265.sh` — ffmpeg qismi, uchta rejimda:
+
+  ```sh
+  scripts/encode_h265.sh --plan   <papka>           # sifatlar ro'yxatini tuzadi
+  scripts/encode_h265.sh --render <papka> 720p      # faqat bitta sifatni kodlaydi
+  scripts/encode_h265.sh          <papka>           # hammasini ketma-ket (qo'lda sinash)
+  ```

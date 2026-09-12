@@ -7,6 +7,13 @@
 # Workflow ishlash vaqtida yaratadigan vaqtinchalik fayllar
 .build_processed_folders.txt
 list.txt
+.encode_plan
+.encode_meta_name
+.encode_meta_files
+.encode_out_file
+
+# R2'dan yuklab olingan manba papkalari (workflow o'zi tozalaydi)
+/anime/
 
 # Har ehtimolga qarshi: kodlangan natija ham commit qilinmasin
 # (workflow buni uploaddan keyin o'zi o'chiradi, lekin qo'lda push qilinsa ham

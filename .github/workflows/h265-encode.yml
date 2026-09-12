@@ -8,11 +8,20 @@ name: H265 encode
 # Manbaning sifatiga qarab bir nechta sifat tayyorlanadi (upscale qilinmaydi):
 #   1080p -> 1080p, 720p, 480p, 360p      480p -> 480p, 360p
 #    720p ->        720p, 480p, 360p      360p -> faqat 360p
-# Hammasi BITTA ffmpeg buyrug'ida, BITTA asl manbadan chiqariladi, shuning
-# uchun barcha sifatning davomiyligi bir xil bo'ladi.
+# Har sifat AYNAN BIR XIL asl manbadan chiqariladi, shuning uchun barcha
+# sifatning davomiyligi bir xil bo'ladi.
 #
 # Natija: akkountning o'zining Saqlangan xabarlari (Saved Messages).
 # Video tagidagi sarlavha — bucketdagi papka nomi va sifat.
+#
+# RESUME: har sifat Telegramga to'liq yuborilgach, R2'dagi shu papkaga
+# "<sifat>.md" marker fayli yuklanadi. Actions limiti tugab ish o'chib qolsa,
+# qayta ishga tushirilganda marker fayli bor sifatlar o'tkazib yuboriladi —
+# faqat qolganlari tayyorlanadi. Hamma sifat tugagach papka R2'dan
+# butunlay o'chiriladi.
+#
+# Bitta papka tugagach bucket ro'yxati QAYTADAN o'qiladi, shuning uchun
+# workflow ishlayotganda yuklangan yangi papkalar ham shu run'da ishlanadi.
 
 on:
   workflow_dispatch: {}
@@ -63,6 +72,10 @@ jobs:
           # uchun oshirish mumkin (32, 34) — sifat shunga yarasha pasayadi.
           H265_CRF: "30"
           H265_PRESET: medium
+          # Papkadagi eng yangi fayl shu daqiqadan yosh bo'lsa, papka bu
+          # aylanishda o'tkazib yuboriladi (hali telefondan yuklanmoqda
+          # bo'lishi mumkin). 0 — tekshiruvni o'chiradi.
+          R2_SETTLE_MIN: "2"
           PYTHONUNBUFFERED: "1"
         run: bash scripts/process_all_h265.sh
 
