@@ -8,8 +8,8 @@ shaxsiy chatiga yuklanadi.
 Ishlatish:
     python3 -u telegram_upload.py 2-fasl_7-qism.mp4 --user 12345678 --name 2-fasl_7-qism
 
-  --user  : videoning yuklanadigan foydalanuvchi ID (anipng/<USER_ID>_logo.png
-            fayl nomidan olinadi)
+  --user  : qabul qiluvchi — foydalanuvchi ID, @username, yoki "me"
+            ("me" = akkountning o'zining Saqlangan xabarlari)
   --name  : epizod nomi. Undagi pastki chiziqlar sarlavhada bo'sh joyga
             aylanadi: "2-fasl_7-qism" -> "2-fasl 7-qism"
 """
@@ -144,11 +144,15 @@ async def main(video: str, user_id, name: str):
         print(f"   Sarlavha: {caption}", flush=True)
 
         # Peer keshiga olish uchun suhbatlar ro'yxatini o'qib chiqamiz
-        # (aks holda PeerIdInvalid xatosi chiqishi mumkin).
-        print("🔎 Suhbatlar ro'yxati o'qilmoqda...", flush=True)
-        async for _ in app.get_dialogs():
-            pass
-        print("   Tayyor.", flush=True)
+        # (aks holda PeerIdInvalid xatosi chiqishi mumkin). "me" — akkountning
+        # o'zi (Saqlangan xabarlar), unga peer izlash kerak emas.
+        if user_id == "me":
+            print("📥 Qabul qiluvchi: Saqlangan xabarlar (me)", flush=True)
+        else:
+            print("🔎 Suhbatlar ro'yxati o'qilmoqda...", flush=True)
+            async for _ in app.get_dialogs():
+                pass
+            print("   Tayyor.", flush=True)
 
         meta = get_video_metadata(video)
         thumb, thumb_owned = get_thumbnail(video, name)

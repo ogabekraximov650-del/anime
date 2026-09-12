@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Cloudflare R2 ("anime" bucket) ichidagi BARCHA epizod papkalarni
+# Cloudflare R2 "aniraxuz" bucket'i ichidagi BARCHA epizod papkalarni
 # BIRIN-KETIN H.265 (libx265) bilan kodlaydi:
-#   1) R2'dan shu papkani yuklab oladi
+#   1) R2'dan (aniraxuz bucket) shu papkani yuklab oladi
 #   2) kodlaydi (encode_h265.sh) — videoga rasm/logotip QO'SHILMAYDI
-#   3) tayyor videoni Telegramga yuklaydi
+#   3) tayyor videoni akkountning O'ZINING Saqlangan xabarlariga
+#      (Saved Messages) yuboradi
 #   4) muvaffaqiyatli bo'lsa — papkani R2'dan o'chirib tashlaydi
 #   5) shundan keyingina KEYINGI papkaga o'tadi
 #
@@ -20,15 +21,15 @@
 # Kerakli muhit o'zgaruvchilari:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 API tokeni
 #   R2_ENDPOINT                              — https://<account_id>.r2.cloudflarestorage.com
-#   R2_BUCKET                                — bucket nomi (masalan: anime)
-#   TG_USER_ID (ixtiyoriy)                   — video yuboriladigan user ID.
-#       Berilmasa, repo'dagi anipng/<USER_ID>_logo.png fayl nomidan olinadi
-#       (fayl faqat ID manbasi sifatida o'qiladi, videoga qo'yilmaydi).
+#   R2_BUCKET (ixtiyoriy)                    — bucket nomi, standart: aniraxuz
+#   TG_TARGET (ixtiyoriy)                    — qabul qiluvchi. Standart "me" —
+#       ya'ni sessiya egasining O'ZINING Saqlangan xabarlari (Saved Messages).
+#       Logotip fayli endi umuman kerak emas.
 set -uo pipefail
 shopt -s nullglob
 
 : "${R2_ENDPOINT:?R2_ENDPOINT muhit ozgaruvchisi kerak}"
-: "${R2_BUCKET:?R2_BUCKET muhit ozgaruvchisi kerak}"
+R2_BUCKET="${R2_BUCKET:-aniraxuz}"
 : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID muhit ozgaruvchisi kerak}"
 : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY muhit ozgaruvchisi kerak}"
 
@@ -37,19 +38,11 @@ cd "$REPO_ROOT" || exit 1
 
 s3() { aws s3 "$@" --endpoint-url "$R2_ENDPOINT"; }
 
-# --- Telegram user ID'ni bir marta aniqlab olamiz ---
-USER_ID="${TG_USER_ID:-}"
-if [ -z "$USER_ID" ]; then
-    logo=$(ls anipng/*_logo.png 2>/dev/null | head -n 1)
-    if [ -n "$logo" ]; then
-        USER_ID=$(basename "$logo" | sed 's/_logo\.png$//')
-    fi
-fi
-if [ -z "$USER_ID" ]; then
-    echo "::error::Telegram user ID topilmadi — TG_USER_ID sekretini bering yoki anipng/<user_id>_logo.png faylini qo'shing."
-    exit 1
-fi
-echo "📨 Telegram user: $USER_ID"
+# --- Qabul qiluvchi: akkountning o'zining Saqlangan xabarlari ---
+# "me" — Pyrogram'da sessiya egasining o'zi, ya'ni Saved Messages.
+TG_TARGET="${TG_TARGET:-me}"
+echo "📨 Yuboriladigan joy: $TG_TARGET (Saqlangan xabarlar)"
+echo "🪣 R2 bucket: $R2_BUCKET"
 
 # --- Bucketdagi epizod papkalarini (top-level prefikslar) ro'yxatga olish ---
 mapfile -t sorted_folders < <(
@@ -83,9 +76,9 @@ for FOLDER in "${sorted_folders[@]}"; do
     fi
 
     NAME="$(cat .encode_meta_name)"
-    echo "User: $USER_ID | Nom: $NAME"
+    echo "Qabul qiluvchi: $TG_TARGET | Nom: $NAME"
 
-    if ! python3 -u scripts/telegram_upload.py "${NAME}.mp4" --user "$USER_ID" --name "$NAME"; then
+    if ! python3 -u scripts/telegram_upload.py "${NAME}.mp4" --user "$TG_TARGET" --name "$NAME"; then
         echo "::error::$FOLDER ($NAME): Telegramga yuklashda xatolik — jarayon to'xtatildi."
         rm -f "${NAME}.mp4" .encode_meta_name
         echo "::endgroup::"

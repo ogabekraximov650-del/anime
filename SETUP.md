@@ -120,11 +120,18 @@ xatoni ko'rib, "Re-run jobs" bilan qayta urinib ko'rishingiz mumkin.
 `.github/workflows/h265-encode.yml` — qo'lda ishga tushiriladigan
 (`workflow_dispatch`) alohida workflow. Oddiy `Encode` workflow'idan farqi:
 
+- manba: R2'dagi **`aniraxuz`** bucket (oddiy `Encode` esa `anime` bucket'dan
+  oladi);
 - video **H.265 / HEVC** (`libx265`) bilan kodlanadi;
 - videoga **hech qanday logotip va hech qanday rasm (cover-intro) qo'yilmaydi** —
   shunchaki manba video qayta kodlanadi;
-- bitrate: o'rtacha (target) **1500k**, minimal **800k**, maksimal **2000k**,
-  buffer (VBV) **2500k**;
+- **bitrate chegaralari yo'q** — fayl hajmi imkon qadar kichik bo'lishi uchun
+  qat'iy bitrate o'rniga sifatga asoslangan **CRF** rejimi ishlatiladi
+  (standart `H265_CRF: 30`, `H265_PRESET: medium`). Keyframe intervali ham
+  majburan qisqartirilmaydi;
+- tayyor video **akkountning o'zining Saqlangan xabarlariga** (Saved Messages)
+  yuboriladi — Pyrogram'dagi `me` qabul qiluvchisi. Logotip fayli ham,
+  `TG_USER_ID` sekreti ham kerak emas;
 - audio avvalgidek AAC, stereo, 44.1 kHz, 128k.
 
 Ishlatiladigan skriptlar: `scripts/process_all_h265.sh` (R2 → kodlash →
@@ -133,11 +140,14 @@ Telegram → R2'dan tozalash) va `scripts/encode_h265.sh` (ffmpeg qismi).
 Epizod nomi: papka ichida `.png` bo'lsa — shu fayl **nomi** (rasmning o'zi
 videoga qo'shilmaydi), bo'lmasa — papka nomining o'zi ishlatiladi.
 
-Telegram manzili: `TG_USER_ID` sekreti bo'lsa — shundan olinadi; bo'lmasa,
-eskisidek `anipng/<USER_ID>_logo.png` fayl **nomidan** o'qiladi (bu holda ham
-logotip videoga qo'yilmaydi).
+### Fayl hajmini yana kamaytirish
 
-Eslatma: x265'da "minimal bitrate" uchun qattiq VBV parametri yo'q
-(`vbv-minrate` mavjud emas) — 800k qiymati ffmpeg darajasida beriladi, amalda
-esa pastki chegara ABR target (1500k) orqali ushlab turiladi, shuning uchun
-juda sodda sahnalarda bitrate 800k'dan pastga tushishi mumkin.
+Workflow ichidagi `env:` qiymatlarini o'zgartirish kifoya:
+
+| O'zgaruvchi | Standart | Ta'siri |
+|---|---|---|
+| `H265_CRF` | `30` | Qiymat **katta** bo'lsa fayl **kichik** boladi (32, 34...), sifat pasayadi |
+| `H265_PRESET` | `medium` | `slow` — yana kichikroq fayl, lekin kodlash ancha sekin |
+
+⚠️ `slow` preset'da uzun epizodlar GitHub runner'ida 360 daqiqalik
+cheklovga yetib qolishi mumkin — avval bitta epizodda sinab ko'ring.

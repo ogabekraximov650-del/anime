@@ -16,11 +16,17 @@
 # Chiqish fayl nomi: papka ichida .png bo'lsa — shu faylning nomi (faqat NOM
 # sifatida, rasm videoga qo'yilmaydi), bo'lmasa — papka nomining o'zi.
 #
-# Bitrate (talab qilinganidek):
-#   o'rtacha (target) 1500k | minimal 800k | maksimal 2000k | buffer 2500k
-# Eslatma: x265'da "minimal bitrate" uchun qattiq VBV parametri yo'q
-# (vbv-minrate mavjud emas), shuning uchun -minrate ffmpeg darajasida
-# beriladi; amalda pastki chegara ABR target (1500k) orqali ushlab turiladi.
+# Bitrate CHEGARALARI YO'Q — maqsad fayl hajmini imkon qadar kichik qilish.
+# Shu sababli qat'iy bitrate (b:v/minrate/maxrate/bufsize) o'rniga sifatga
+# asoslangan CRF rejimi ishlatiladi: x265 har bir sahnaga qancha bitrate
+# kerak bo'lsa shuncha beradi, sodda sahnalarda esa bitrate juda pastga
+# tushadi — natijada fayl ancha kichik chiqadi.
+#   H265_CRF    (ixtiyoriy) — standart 30. Qiymat KATTA bo'lsa fayl KICHIK
+#                             boladi (masalan 32, 34), sifat esa pasayadi.
+#   H265_PRESET (ixtiyoriy) — standart medium. "slow" yana kichikroq fayl
+#                             beradi, lekin kodlash ancha sekin ishlaydi.
+# Keyframe intervali ham majburan qisqartirilmaydi (x265 o'zi tanlaydi) —
+# bu ham fayl hajmini kamaytiradi.
 #
 # Audio har doim standart AAC, 2 kanal (stereo), 44.1kHz'ga qayta kodlanadi.
 
@@ -36,11 +42,11 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-# --- Bitrate sozlamalari ---
-V_TARGET="1500k"
-V_MIN="800k"
-V_MAX="2000k"
-V_BUF="2500k"
+# --- Siqish sozlamalari: bitrate chegaralari yo'q, CRF ishlatiladi ---
+# CRF katta bo'lsa -> fayl kichik. Kerak bo'lsa muhit o'zgaruvchisi bilan
+# o'zgartirish mumkin.
+CRF="${H265_CRF:-30}"
+PRESET="${H265_PRESET:-medium}"
 
 # --- Papka nomini ajratish: [<TRIM>_]<xohlagan_nom> ---
 IFS='_' read -r p1 rest <<< "$FOLDER"
@@ -69,7 +75,7 @@ OUTPUT="$REPO_ROOT/${CLEAN_NAME}.mp4"
 
 echo "=== $CLEAN_NAME H.265 bilan ishlanmoqda (kesish: ${TRIM_SEC}s) ==="
 echo "    Kodek : libx265 (rasm/logotip qo'shilmaydi)"
-echo "    Bitrate: target ${V_TARGET} | min ${V_MIN} | max ${V_MAX} | buffer ${V_BUF}"
+echo "    Siqish: CRF ${CRF} | preset ${PRESET} | bitrate chegarasi yo'q"
 echo "    Natija: ${CLEAN_NAME}.mp4"
 
 cd "$ANIME_DIR" || exit 1
@@ -127,9 +133,7 @@ encode() {
 
     stdbuf -oL ffmpeg "${INPUT_ARGS[@]}" \
         "${map_args[@]}" \
-        -c:v libx265 -preset medium \
-        -b:v "$V_TARGET" -minrate "$V_MIN" -maxrate "$V_MAX" -bufsize "$V_BUF" \
-        -g 48 -keyint_min 48 \
+        -c:v libx265 -preset "$PRESET" -crf "$CRF" \
         -pix_fmt yuv420p -tag:v hvc1 \
         -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \

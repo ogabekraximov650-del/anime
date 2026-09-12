@@ -2,7 +2,9 @@ name: H265 encode
 
 # Videoni FAQAT H.265 (libx265) bilan qayta kodlaydi.
 # Videoga hech qanday logotip ham, cover-rasm (intro) ham qo'shilmaydi.
-# Bitrate: o'rtacha 1500k | minimal 800k | maksimal 2000k | buffer 2500k
+# Bitrate chegaralari YO'Q — CRF rejimi, maqsad fayl hajmini kichik qilish.
+# Manba: R2'dagi "aniraxuz" bucket. Natija: akkountning o'zining
+# Saqlangan xabarlari (Saved Messages).
 
 on:
   workflow_dispatch: {}
@@ -38,15 +40,20 @@ jobs:
           fi
           printf '%s%s%s' "${{ secrets.PYRO_SESSION_B64_1 }}" "${{ secrets.PYRO_SESSION_B64_2 }}" "${{ secrets.PYRO_SESSION_B64_3 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
 
-      - name: R2'dan papkalarni birin-ketin yuklab olib H.265 bilan kodlash va Telegramga yuklash
+      - name: aniraxuz bucket'dan papkalarni yuklab olib H.265 bilan kodlash va Saqlangan xabarlarga yuborish
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: anime
+          R2_BUCKET: aniraxuz
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+          # "me" = akkountning o'zining Saqlangan xabarlari
+          TG_TARGET: me
+          # Fayl hajmini yana kichraytirish uchun CRF'ni oshirish mumkin
+          # (masalan 32 yoki 34) — sifat shunga yarasha pasayadi.
+          H265_CRF: "30"
+          H265_PRESET: medium
           PYTHONUNBUFFERED: "1"
         run: bash scripts/process_all_h265.sh
 
