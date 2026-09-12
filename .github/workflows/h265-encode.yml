@@ -3,8 +3,16 @@ name: H265 encode
 # Videoni FAQAT H.265 (libx265) bilan qayta kodlaydi.
 # Videoga hech qanday logotip ham, cover-rasm (intro) ham qo'shilmaydi.
 # Bitrate chegaralari YO'Q — CRF rejimi, maqsad fayl hajmini kichik qilish.
-# Manba: R2'dagi "aniraxuz" bucket. Natija: akkountning o'zining
-# Saqlangan xabarlari (Saved Messages).
+#
+# Manba: R2'dagi "aniraxuz" bucket.
+# Manbaning sifatiga qarab bir nechta sifat tayyorlanadi (upscale qilinmaydi):
+#   1080p -> 1080p, 720p, 480p, 360p      480p -> 480p, 360p
+#    720p ->        720p, 480p, 360p      360p -> faqat 360p
+# Hammasi BITTA ffmpeg buyrug'ida, BITTA asl manbadan chiqariladi, shuning
+# uchun barcha sifatning davomiyligi bir xil bo'ladi.
+#
+# Natija: akkountning o'zining Saqlangan xabarlari (Saved Messages).
+# Video tagidagi sarlavha — bucketdagi papka nomi va sifat.
 
 on:
   workflow_dispatch: {}
@@ -40,7 +48,7 @@ jobs:
           fi
           printf '%s%s%s' "${{ secrets.PYRO_SESSION_B64_1 }}" "${{ secrets.PYRO_SESSION_B64_2 }}" "${{ secrets.PYRO_SESSION_B64_3 }}" | base64 -d > "$GITHUB_WORKSPACE/scripts/pyro_session.session"
 
-      - name: aniraxuz bucket'dan papkalarni yuklab olib H.265 bilan kodlash va Saqlangan xabarlarga yuborish
+      - name: aniraxuz bucket'dan yuklab olib H.265 ko'p sifatda kodlash va Saqlangan xabarlarga yuborish
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -50,8 +58,9 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           # "me" = akkountning o'zining Saqlangan xabarlari
           TG_TARGET: me
-          # Fayl hajmini yana kichraytirish uchun CRF'ni oshirish mumkin
-          # (masalan 32 yoki 34) — sifat shunga yarasha pasayadi.
+          # CRF BASE qiymati (1080p uchun). Past sifatlar avtomatik
+          # BASE-1 / BASE-2 / BASE-3 oladi. Fayl hajmini yana kichraytirish
+          # uchun oshirish mumkin (32, 34) — sifat shunga yarasha pasayadi.
           H265_CRF: "30"
           H265_PRESET: medium
           PYTHONUNBUFFERED: "1"

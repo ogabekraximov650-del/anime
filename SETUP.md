@@ -115,7 +115,7 @@ Agar kodlash yoki yuklash muvaffaqiyatsiz tugasa, manba fayllar va workflow
 fayli repo'da qoladi (tozalash qadami ishlamaydi) — "Actions" bo'limidan
 xatoni ko'rib, "Re-run jobs" bilan qayta urinib ko'rishingiz mumkin.
 
-## 6. "H265 encode" workflow'i (logotip va rasmsiz)
+## 6. "H265 encode" workflow'i (logotip va rasmsiz, ko'p sifatli)
 
 `.github/workflows/h265-encode.yml` — qo'lda ishga tushiriladigan
 (`workflow_dispatch`) alohida workflow. Oddiy `Encode` workflow'idan farqi:
@@ -123,31 +123,75 @@ xatoni ko'rib, "Re-run jobs" bilan qayta urinib ko'rishingiz mumkin.
 - manba: R2'dagi **`aniraxuz`** bucket (oddiy `Encode` esa `anime` bucket'dan
   oladi);
 - video **H.265 / HEVC** (`libx265`) bilan kodlanadi;
-- videoga **hech qanday logotip va hech qanday rasm (cover-intro) qo'yilmaydi** —
-  shunchaki manba video qayta kodlanadi;
-- **bitrate chegaralari yo'q** — fayl hajmi imkon qadar kichik bo'lishi uchun
-  qat'iy bitrate o'rniga sifatga asoslangan **CRF** rejimi ishlatiladi
-  (standart `H265_CRF: 30`, `H265_PRESET: medium`). Keyframe intervali ham
-  majburan qisqartirilmaydi;
-- tayyor video **akkountning o'zining Saqlangan xabarlariga** (Saved Messages)
-  yuboriladi — Pyrogram'dagi `me` qabul qiluvchisi. Logotip fayli ham,
+- videoga **hech qanday logotip va hech qanday rasm (cover-intro) qo'yilmaydi**;
+  papka ichidagi `.png` fayllar butunlay e'tiborga olinmaydi;
+- **bitrate chegaralari yo'q** — fayl hajmi kichik bo'lishi uchun sifatga
+  asoslangan **CRF** rejimi ishlatiladi;
+- tayyor videolar **akkountning o'zining Saqlangan xabarlariga** (Saved
+  Messages) yuboriladi — Pyrogram'dagi `me`. Logotip fayli ham,
   `TG_USER_ID` sekreti ham kerak emas;
-- audio avvalgidek AAC, stereo, 44.1 kHz, 128k.
+- audio AAC, stereo, 44.1 kHz (720p va yuqorisi — 128k, pastrog'i — 96k).
 
-Ishlatiladigan skriptlar: `scripts/process_all_h265.sh` (R2 → kodlash →
-Telegram → R2'dan tozalash) va `scripts/encode_h265.sh` (ffmpeg qismi).
+### Sifatlar avtomatik tanlanadi
 
-Epizod nomi: papka ichida `.png` bo'lsa — shu fayl **nomi** (rasmning o'zi
-videoga qo'shilmaydi), bo'lmasa — papka nomining o'zi ishlatiladi.
+Manbaning balandligiga qarab, **hech qachon upscale qilinmaydi**:
 
-### Fayl hajmini yana kamaytirish
+| Manba | Tayyorlanadigan sifatlar |
+|---|---|
+| 1080p | 1080p, 720p, 480p, 360p |
+| 720p | 720p, 480p, 360p |
+| 480p | 480p, 360p |
+| 360p | faqat 360p |
 
-Workflow ichidagi `env:` qiymatlarini o'zgartirish kifoya:
+1080p'dan baland manba (1440p, 2160p) 1080p'ga tushiriladi — undan yuqorisi
+tayyorlanmaydi. Nostandart balandlik (masalan 1070p) eng yuqori sifat
+sifatida o'z holicha, `scale`'siz kodlanadi.
+
+**Hamma sifat BITTA `ffmpeg` buyrug'ida, BITTA asl manbadan** chiqariladi
+(`split` filtri). Shuning uchun:
+
+- manba faqat bir marta decode qilinadi (~13% tezroq),
+- hech bir sifat boshqasidan qayta siqilmaydi (ikki karra siqilish yo'q),
+- **barcha sifatning davomiyligi mikrosekundigacha bir xil** bo'ladi.
+
+### Telegram sarlavhasi
+
+Video tagida **bucketdagi papka nomi** va sifat yoziladi. Papka nomidagi
+pastki chiziqlar bo'sh joyga aylanadi, `TRIM_SEC` prefiksi esa sarlavhaga
+tushmaydi.
+
+Masalan `s3://aniraxuz/30_2-fasl_367-qism/` papkasi uchun:
+
+```
+2-fasl 367-qism
+1080p
+```
+
+Fayllar kattadan kichikka ketma-ket yuboriladi (1080p → 720p → 480p → 360p),
+har biri yuborilgach runner diskidan darhol o'chiriladi. Hammasi
+muvaffaqiyatli yuborilgandan keyingina papka R2'dan o'chiriladi.
+
+### Fayl hajmini boshqarish
+
+Workflow ichidagi `env:` qiymatlari:
 
 | O'zgaruvchi | Standart | Ta'siri |
 |---|---|---|
-| `H265_CRF` | `30` | Qiymat **katta** bo'lsa fayl **kichik** boladi (32, 34...), sifat pasayadi |
+| `H265_CRF` | `30` | 1080p uchun BASE. Qiymat **katta** bo'lsa fayl **kichik** bo'ladi (32, 34...), sifat pasayadi |
 | `H265_PRESET` | `medium` | `slow` — yana kichikroq fayl, lekin kodlash ancha sekin |
 
-⚠️ `slow` preset'da uzun epizodlar GitHub runner'ida 360 daqiqalik
-cheklovga yetib qolishi mumkin — avval bitta epizodda sinab ko'ring.
+Past sifatlar BASE'dan avtomatik pastroq CRF oladi (pleyer ularni cho'zib
+ko'rsatadi, shuning uchun artefaktlar kattalashadi):
+
+| Balandlik | CRF |
+|---|---|
+| ≥1080p | BASE (30) |
+| ≥720p | BASE−1 (29) |
+| ≥480p | BASE−2 (28) |
+| <480p | BASE−3 (27) |
+
+⚠️ `slow` preset'da uzun epizodlar GitHub runner'ining 360 daqiqalik
+chekloviga yetib qolishi mumkin — avval bitta epizodda sinab ko'ring.
+
+Ishlatiladigan skriptlar: `scripts/process_all_h265.sh` (R2 → kodlash →
+Telegram → R2'dan tozalash) va `scripts/encode_h265.sh` (ffmpeg qismi).

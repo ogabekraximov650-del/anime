@@ -2,10 +2,14 @@
 # Cloudflare R2 "aniraxuz" bucket'i ichidagi BARCHA epizod papkalarni
 # BIRIN-KETIN H.265 (libx265) bilan kodlaydi:
 #   1) R2'dan (aniraxuz bucket) shu papkani yuklab oladi
-#   2) kodlaydi (encode_h265.sh) — videoga rasm/logotip QO'SHILMAYDI
-#   3) tayyor videoni akkountning O'ZINING Saqlangan xabarlariga
-#      (Saved Messages) yuboradi
-#   4) muvaffaqiyatli bo'lsa — papkani R2'dan o'chirib tashlaydi
+#   2) kodlaydi (encode_h265.sh) — videoga rasm/logotip QO'SHILMAYDI va
+#      manbaning sifatiga qarab bir nechta sifat tayyorlanadi
+#      (1080p manba -> 1080p/720p/480p/360p, 720p manba -> 720p/480p/360p,
+#       480p -> 480p/360p, 360p -> faqat 360p)
+#   3) tayyor videolarni KATTADAN KICHIKKA ketma-ket akkountning O'ZINING
+#      Saqlangan xabarlariga (Saved Messages) yuboradi. Video tagidagi
+#      sarlavha — BUCKETDAGI PAPKA NOMI va sifat.
+#   4) hammasi muvaffaqiyatli yuborilgach — papkani R2'dan o'chirib tashlaydi
 #   5) shundan keyingina KEYINGI papkaga o'tadi
 #
 # Birortasida xatolik chiqsa — shu yerda to'xtaydi (keyingilarga o'tilmaydi),
@@ -14,9 +18,9 @@
 #
 # R2 bucket tuzilishi:
 #   s3://<BUCKET>/<papka>/seg_*.ts yoki *.mp4  — video manba
-#   s3://<BUCKET>/<papka>/*.png                 — ixtiyoriy; FAQAT epizod
-#       nomi uchun o'qiladi, video ichiga qo'yilmaydi. Bo'lmasa, nom
-#       sifatida papka nomi ishlatiladi.
+# Epizod nomi PAPKA NOMIDAN olinadi (TRIM prefiksi hisobga olinmaydi,
+# pastki chiziqlar bo'sh joyga aylanadi). Papka ichidagi .png fayllar
+# butunlay e'tiborga olinmaydi.
 #
 # Kerakli muhit o'zgaruvchilari:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — R2 API tokeni
@@ -78,9 +82,28 @@ for FOLDER in "${sorted_folders[@]}"; do
     NAME="$(cat .encode_meta_name)"
     echo "Qabul qiluvchi: $TG_TARGET | Nom: $NAME"
 
-    if ! python3 -u scripts/telegram_upload.py "${NAME}.mp4" --user "$TG_TARGET" --name "$NAME"; then
-        echo "::error::$FOLDER ($NAME): Telegramga yuklashda xatolik — jarayon to'xtatildi."
-        rm -f "${NAME}.mp4" .encode_meta_name
+    # Tayyor sifatlarni kattadan kichikka ketma-ket yuklaymiz. Har biri
+    # yuborilgach darhol o'chiriladi (runner diskini bo'shatish uchun).
+    upload_failed=0
+    while IFS=$'\t' read -r LABEL FILE; do
+        [ -n "$FILE" ] || continue
+        echo "── $NAME ($LABEL) yuklanmoqda..."
+        if ! python3 -u scripts/telegram_upload.py "$FILE" \
+                --user "$TG_TARGET" \
+                --name "${NAME} ${LABEL}" \
+                --caption "$(printf '%s\n%s' "$NAME" "$LABEL")"; then
+            echo "::error::$FOLDER ($NAME $LABEL): Telegramga yuklashda xatolik — jarayon to'xtatildi."
+            upload_failed=1
+            break
+        fi
+        rm -f "$FILE"
+    done < .encode_meta_files
+
+    if [ "$upload_failed" -ne 0 ]; then
+        while IFS=$'\t' read -r _ FILE; do
+            [ -n "$FILE" ] && rm -f "$FILE"
+        done < .encode_meta_files
+        rm -f .encode_meta_name .encode_meta_files
         echo "::endgroup::"
         exit 1
     fi
@@ -88,9 +111,9 @@ for FOLDER in "${sorted_folders[@]}"; do
     echo "🧹 $FOLDER R2'dan o'chirilmoqda..."
     s3 rm "s3://$R2_BUCKET/$FOLDER/" --recursive
     rm -rf "anime/$FOLDER"
-    rm -f "${NAME}.mp4" .encode_meta_name
+    rm -f .encode_meta_name .encode_meta_files
 
-    echo "✅ $FOLDER ($NAME) tayyor va yuborildi."
+    echo "✅ $FOLDER ($NAME) — barcha sifatlar tayyor va yuborildi."
     echo "::endgroup::"
 done
 

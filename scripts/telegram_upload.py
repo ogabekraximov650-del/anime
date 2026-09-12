@@ -8,10 +8,13 @@ shaxsiy chatiga yuklanadi.
 Ishlatish:
     python3 -u telegram_upload.py 2-fasl_7-qism.mp4 --user 12345678 --name 2-fasl_7-qism
 
-  --user  : qabul qiluvchi — foydalanuvchi ID, @username, yoki "me"
-            ("me" = akkountning o'zining Saqlangan xabarlari)
-  --name  : epizod nomi. Undagi pastki chiziqlar sarlavhada bo'sh joyga
-            aylanadi: "2-fasl_7-qism" -> "2-fasl 7-qism"
+  --user    : qabul qiluvchi — foydalanuvchi ID, @username, yoki "me"
+              ("me" = akkountning o'zining Saqlangan xabarlari)
+  --name    : epizod nomi — fayl nomi va thumbnail izlash uchun. Undagi
+              pastki chiziqlar bo'sh joyga aylanadi:
+              "2-fasl_7-qism" -> "2-fasl 7-qism"
+  --caption : (ixtiyoriy) video tagiga yoziladigan matn. Berilmasa, --name
+              dan olinadi. Ko'p qatorli bo'lishi mumkin.
 """
 
 import os, sys, time, asyncio, subprocess, tempfile
@@ -124,7 +127,7 @@ def make_progress(label: str):
     return callback
 
 
-async def main(video: str, user_id, name: str):
+async def main(video: str, user_id, name: str, caption: str = None):
     if not os.path.exists(video):
         print(f"❌ Topilmadi: {video}")
         sys.exit(1)
@@ -133,15 +136,17 @@ async def main(video: str, user_id, name: str):
         print("❌ --user berilmagan — kanal ishlatilmagani uchun bu shart.")
         sys.exit(1)
 
-    # Pastki chiziqlar sarlavhada bo'sh joyga aylanadi
-    caption = name.replace("_", " ").strip()
+    # Pastki chiziqlar nomda bo'sh joyga aylanadi
+    display_name = name.replace("_", " ").strip()
+    # Sarlavha: --caption berilgan bo'lsa aynan shu, aks holda nomning o'zi
+    caption = (caption if caption is not None else display_name).strip()
     file_size = os.path.getsize(video)
 
     async with Client(SESSION, api_id=API_ID, api_hash=API_HASH) as app:
         me = await app.get_me()
         print(f"✅ Ulandi: {me.first_name} (@{me.username})", flush=True)
         print(f"   Yuboriladigan user: {user_id}", flush=True)
-        print(f"   Sarlavha: {caption}", flush=True)
+        print(f"   Sarlavha: {caption!r}", flush=True)
 
         # Peer keshiga olish uchun suhbatlar ro'yxatini o'qib chiqamiz
         # (aks holda PeerIdInvalid xatosi chiqishi mumkin). "me" — akkountning
@@ -159,7 +164,7 @@ async def main(video: str, user_id, name: str):
 
         dur = meta["duration"]
         dur_txt = (f"{dur//60}:{dur%60:02d}") if dur else "noma'lum"
-        print(f"\n📦 {caption}.mp4 | {file_size/1024/1024:.2f} MB | "
+        print(f"\n📦 {display_name}.mp4 | {file_size/1024/1024:.2f} MB | "
               f"{meta['width'] or '?'}x{meta['height'] or '?'} | {dur_txt}", flush=True)
         print(f"🖼  Thumbnail: {os.path.basename(thumb) if thumb else 'yo‘q'}\n", flush=True)
 
@@ -173,10 +178,10 @@ async def main(video: str, user_id, name: str):
             msg = await app.send_video(
                 user_id,
                 video=video,
-                caption=caption,              # FAQAT toza nom, boshqa hech narsa
-                file_name=f"{caption}.mp4",
+                caption=caption,
+                file_name=f"{display_name}.mp4",
                 supports_streaming=True,
-                progress=make_progress(caption),
+                progress=make_progress(display_name),
                 **extra,
             )
         finally:
@@ -195,6 +200,7 @@ if __name__ == "__main__":
     video = args[0]
     user_raw = None
     name = Path(video).stem
+    caption = None
 
     i = 1
     while i < len(args):
@@ -202,7 +208,9 @@ if __name__ == "__main__":
             user_raw = args[i + 1]; i += 2
         elif args[i] == "--name" and i + 1 < len(args):
             name = args[i + 1]; i += 2
+        elif args[i] == "--caption" and i + 1 < len(args):
+            caption = args[i + 1]; i += 2
         else:
             i += 1
 
-    asyncio.run(main(video, norm_id(user_raw), name))
+    asyncio.run(main(video, norm_id(user_raw), name, caption))
