@@ -85,7 +85,7 @@ segs=(seg_*.ts)
 # H.265 sozlamalari "H265 encode" workflow'i bilan bir xil: sof CRF rejimi
 # (bitrate chegarasi yo'q, majburiy keyframe yo'q) — fayl hajmi kichik
 # bo'lishi uchun. CRF balandlikka qarab: >=1080p BASE | >=720p BASE-1 |
-# >=480p BASE-2 | qolgani BASE-3. Audio: >=720p 128k, aks holda 96k.
+# >=480p BASE-2 | qolgani BASE-3. Audio har doim 128k.
 # VENC/ABR video o'lchami (h) aniqlangach set_venc orqali to'ldiriladi.
 set_venc() {
     if [ "${VIDEO_CODEC:-h264}" = "h265" ]; then
@@ -95,7 +95,9 @@ set_venc() {
         elif [ "$h" -ge 480  ]; then crf=$(( base - 2 ))
         else                         crf=$(( base - 3 ))
         fi
-        [ "$h" -ge 720 ] && ABR="128k" || ABR="96k"
+        # Audio ATAYLAB doim 128k (asl "Encode" bilan bir xil) — past
+        # bitrate AAC'da shivirlash/artefakt chiqmasligi uchun.
+        ABR="128k"
         # hvc1 tegi — Telegram/iOS'da HEVC video to'g'ri ijro etilishi uchun.
         VENC=(-c:v libx265 -preset "${H265_PRESET:-medium}" -crf "$crf"
               -x265-params log-level=error -tag:v hvc1)
