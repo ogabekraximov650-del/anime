@@ -93,12 +93,14 @@ for FOLDER in "${sorted_folders[@]}"; do
         exit 1
     fi
 
+    OUT_MB=$(awk -v b="$(stat -c%s "${NAME}.mp4" 2>/dev/null || echo 0)" 'BEGIN {printf "%.1f", b/1048576}')
+
     echo "🧹 $FOLDER R2'dan o'chirilmoqda..."
     s3 rm "s3://$R2_BUCKET/$FOLDER/" --recursive
     rm -rf "anime/$FOLDER"
     rm -f "${NAME}.mp4" .encode_meta_name
 
-    echo "✅ $FOLDER ($NAME) tayyor va yuborildi."
+    echo "✅ $FOLDER ($NAME) tayyor va yuborildi (${OUT_MB} MB)."
     echo "::endgroup::"
 done
 

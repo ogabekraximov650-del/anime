@@ -48,8 +48,9 @@ jobs:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           VIDEO_CODEC: h265
-          # Kichikroq qiymat = yuqori sifat, kattaroq fayl.
-          H265_CRF: "23"
+          # CRF BASE (1080p uchun), "H265 encode" bilan bir xil. Past sifatlar
+          # avtomatik BASE-1 / BASE-2 / BASE-3 oladi. Katta qiymat = kichik fayl.
+          H265_CRF: "30"
           H265_PRESET: medium
           PYTHONUNBUFFERED: "1"
         run: bash scripts/process_all.sh

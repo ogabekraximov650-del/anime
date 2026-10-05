@@ -82,18 +82,32 @@ mp4s=(*.mp4)
 segs=(seg_*.ts)
 
 # --- Video kodek: VIDEO_CODEC=h265 bo'lsa libx265, aks holda (standart) libx264 ---
-if [ "${VIDEO_CODEC:-h264}" = "h265" ]; then
-    # hvc1 tegi — Telegram/iOS'da HEVC video to'g'ri ijro etilishi uchun.
-    VENC=(-c:v libx265 -preset "${H265_PRESET:-medium}" -crf "${H265_CRF:-23}"
-          -maxrate 2000k -bufsize 3000k
-          -x265-params "keyint=48:min-keyint=48:scenecut=0:log-level=error"
-          -tag:v hvc1)
-    echo "    Kodek : H.265 (libx265, crf ${H265_CRF:-23})"
-else
-    VENC=(-c:v libx264 -preset medium -crf 18
-          -g 48 -keyint_min 48 -sc_threshold 0
-          -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k)
-fi
+# H.265 sozlamalari "H265 encode" workflow'i bilan bir xil: sof CRF rejimi
+# (bitrate chegarasi yo'q, majburiy keyframe yo'q) — fayl hajmi kichik
+# bo'lishi uchun. CRF balandlikka qarab: >=1080p BASE | >=720p BASE-1 |
+# >=480p BASE-2 | qolgani BASE-3. Audio: >=720p 128k, aks holda 96k.
+# VENC/ABR video o'lchami (h) aniqlangach set_venc orqali to'ldiriladi.
+set_venc() {
+    if [ "${VIDEO_CODEC:-h264}" = "h265" ]; then
+        local base="${H265_CRF:-30}" crf
+        if   [ "$h" -ge 1080 ]; then crf="$base"
+        elif [ "$h" -ge 720  ]; then crf=$(( base - 1 ))
+        elif [ "$h" -ge 480  ]; then crf=$(( base - 2 ))
+        else                         crf=$(( base - 3 ))
+        fi
+        [ "$h" -ge 720 ] && ABR="128k" || ABR="96k"
+        # hvc1 tegi — Telegram/iOS'da HEVC video to'g'ri ijro etilishi uchun.
+        VENC=(-c:v libx265 -preset "${H265_PRESET:-medium}" -crf "$crf"
+              -x265-params log-level=error -tag:v hvc1)
+        echo "    Kodek : H.265 (libx265, ${h}p, CRF $crf, audio $ABR, bitrate chegarasi yo'q)"
+    else
+        ABR="128k"
+        VENC=(-c:v libx264 -preset medium -crf 18
+              -g 48 -keyint_min 48 -sc_threshold 0
+              -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k)
+        echo "    Kodek : H.264 (libx264)"
+    fi
+}
 
 run_progress() {
     local total_ref="$1"
@@ -119,7 +133,7 @@ run_progress() {
                     else
                         pct="?"
                     fi
-                    echo "🎬 [$CLEAN_NAME] ${pct}% | frm:${f:-0} | vaqt:${tm:-00:00:00} | fps:${fps_now:-0} | br:${clean_br}kbps | tezlik:${sp:-?}"
+                    echo "🎬 [$CLEAN_NAME] ${pct}% | frm:${f:-0} | vaqt:${tm:-00:00:00} | fps:${fps_now:-0} | br:${clean_br}kbps | ${fmt_sz}MB | tezlik:${sp:-?}"
                 fi
                 ;;
         esac
@@ -170,6 +184,8 @@ if [ ${#mp4s[@]} -gt 0 ]; then
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
+    SRC_BYTES=$(stat -c%s "$SRC_MAIN")
+    set_venc
     FILTER="$(build_filter)"
     stdbuf -oL ffmpeg -i "$SRC_MAIN" \
         -loop 1 -t 3 -i "$COVER_IMG" \
@@ -178,7 +194,7 @@ if [ ${#mp4s[@]} -gt 0 ]; then
         -filter_complex "$FILTER" \
         -map "[out_v]" -map "[full_a]" \
         "${VENC[@]}" \
-        -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
+        -pix_fmt yuv420p -c:a aac -ac 2 -b:a "$ABR" -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$(( remain_sec + 3 ))"
     status=$?
@@ -214,6 +230,8 @@ elif [ ${#segs[@]} -gt 0 ]; then
     remain_sec=$(( total_sec - TRIM_SEC ))
     [ "$remain_sec" -lt 1 ] && remain_sec=1
 
+    SRC_BYTES=$(for s in "${segs[@]}"; do stat -c%s "$s"; done | awk '{ t += $1 } END { printf "%d", t }')
+    set_venc
     FILTER="$(build_filter)"
     stdbuf -oL ffmpeg -f concat -safe 0 -i list.txt \
         -loop 1 -t 3 -i "$COVER_IMG" \
@@ -222,7 +240,7 @@ elif [ ${#segs[@]} -gt 0 ]; then
         -filter_complex "$FILTER" \
         -map "[out_v]" -map "[full_a]" \
         "${VENC[@]}" \
-        -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
+        -pix_fmt yuv420p -c:a aac -ac 2 -b:a "$ABR" -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$(( remain_sec + 3 ))"
     status=$?
@@ -235,8 +253,17 @@ fi
 cd "$REPO_ROOT" || exit 1
 
 if [ "$status" -eq 0 ] && [ -s "$OUTPUT" ]; then
-    out_mb=$(awk "BEGIN {printf \"%.1f\", $(stat -c%s "$OUTPUT")/1048576}")
+    out_bytes=$(stat -c%s "$OUTPUT")
+    out_mb=$(awk -v b="$out_bytes" 'BEGIN {printf "%.1f", b/1048576}')
+    src_mb=$(awk -v b="${SRC_BYTES:-0}" 'BEGIN {printf "%.1f", b/1048576}')
+    out_dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUTPUT" 2>/dev/null | head -n 1)
+    out_kbps=$(awk -v b="$out_bytes" -v d="${out_dur:-0}" 'BEGIN { if (d + 0 > 0) printf "%.0f", b*8/d/1000; else printf "?" }')
+    pct=$(awk -v o="$out_bytes" -v s="${SRC_BYTES:-0}" 'BEGIN { if (s + 0 > 0) printf "%.0f%%", o/s*100; else printf "?" }')
     echo ">>> $CLEAN_NAME tayyor! (${out_mb} MB) <<<"
+    echo "    Hajm   : asl ${src_mb} MB -> ${out_mb} MB (${pct})"
+    echo "    Bitrate: ${out_kbps} kbps jami (video+audio) | ${w}x${h}"
+    # ::notice:: — run sahifasining "Annotations" bo'limida ham ko'rinadi.
+    echo "::notice title=${CLEAN_NAME}::${src_mb} MB -> ${out_mb} MB (${pct}) | ${out_kbps} kbps | ${w}x${h}"
     exit 0
 else
     echo "::error::$CLEAN_NAME uchun kodlash muvaffaqiyatsiz tugadi (ffmpeg exit=$status)"
