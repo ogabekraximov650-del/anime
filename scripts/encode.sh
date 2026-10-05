@@ -81,6 +81,20 @@ cd "$ANIME_DIR" || exit 1
 mp4s=(*.mp4)
 segs=(seg_*.ts)
 
+# --- Video kodek: VIDEO_CODEC=h265 bo'lsa libx265, aks holda (standart) libx264 ---
+if [ "${VIDEO_CODEC:-h264}" = "h265" ]; then
+    # hvc1 tegi — Telegram/iOS'da HEVC video to'g'ri ijro etilishi uchun.
+    VENC=(-c:v libx265 -preset "${H265_PRESET:-medium}" -crf "${H265_CRF:-23}"
+          -maxrate 2000k -bufsize 3000k
+          -x265-params "keyint=48:min-keyint=48:scenecut=0:log-level=error"
+          -tag:v hvc1)
+    echo "    Kodek : H.265 (libx265, crf ${H265_CRF:-23})"
+else
+    VENC=(-c:v libx264 -preset medium -crf 18
+          -g 48 -keyint_min 48 -sc_threshold 0
+          -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k)
+fi
+
 run_progress() {
     local total_ref="$1"
     local last_ms=0 f=0 fps_now=0 br="0kbits/s" sz=0 tm="00:00:00" sp="?" us=0
@@ -163,9 +177,7 @@ if [ ${#mp4s[@]} -gt 0 ]; then
         -f lavfi -t 3 -i anullsrc=r=44100:cl=stereo \
         -filter_complex "$FILTER" \
         -map "[out_v]" -map "[full_a]" \
-        -c:v libx264 -preset medium -crf 18 \
-        -g 48 -keyint_min 48 -sc_threshold 0 \
-        -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
+        "${VENC[@]}" \
         -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$(( remain_sec + 3 ))"
@@ -209,9 +221,7 @@ elif [ ${#segs[@]} -gt 0 ]; then
         -f lavfi -t 3 -i anullsrc=r=44100:cl=stereo \
         -filter_complex "$FILTER" \
         -map "[out_v]" -map "[full_a]" \
-        -c:v libx264 -preset medium -crf 18 \
-        -g 48 -keyint_min 48 -sc_threshold 0 \
-        -b:v 1750k -minrate 1200k -maxrate 2000k -bufsize 3000k \
+        "${VENC[@]}" \
         -pix_fmt yuv420p -c:a aac -ac 2 -b:a 128k -ar 44100 \
         -movflags +faststart \
         -progress pipe:1 -nostats -y -loglevel error "$OUTPUT" | run_progress "$(( remain_sec + 3 ))"
